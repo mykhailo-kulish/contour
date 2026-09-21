@@ -31,6 +31,53 @@ structured record underneath for behavior, schemas, and contracts.
   storing, searching, and managing Contour specifications), used as a
   realistic example of the structured-record format.
 
+## Building contour-engine from the YAML
+
+`contour-engine.yaml` is a Contour spec, not documentation of existing
+code — it's meant to be built from directly by an LLM agent, the way
+Section 8's experiments did it. The workflow:
+
+1. **Put the framework paper in the agent's context.** Load
+   [`contour.md`](contour.md) into your LLM agent's context — as a file
+   reference, a pasted-in doc, or a skill (e.g. a Kiro skill, a Claude
+   Code skill, a system prompt attachment) — so the agent knows how to
+   read a Contour record before it sees the spec itself.
+2. **Prompt it to generate the system from the spec**, naming the
+   application framework you want it built in, e.g.:
+
+   > Generate the Contour system from specification `contour-engine.yaml`
+   > using Spring Boot.
+
+   or, for a second independent build to compare against:
+
+   > Generate the Contour system from specification `contour-engine.yaml`
+   > using Python/FastAPI.
+
+3. **Let the record drive the build.** With `contour.md` in context, the
+   agent should read `contour-engine.yaml` top-down — the `System`
+   groups two `Component`s (`contour-engine`, the backend, and
+   `contour-engine-ui`, the console); each Component's `functions`,
+   `interfaces`, `dataObjects`, and `events` are what to build; a
+   Function's `steps` give its ordered behavior — and treat the
+   top-level `requirements` and `guardrails` as enforceable obligations,
+   not prose (e.g. `contour-engine`'s **Interfaces Share One Core**
+   guardrail means the REST and MCP interfaces must be two thin surfaces
+   over one shared service layer, not independent implementations).
+4. **Expect physical-shape decisions the record won't make for you.**
+   The record specifies logical content (e.g. that search must be
+   full-text and indexed) but not implementation shape (e.g. a
+   functional index vs. a generated column) — two independent builds
+   from the same record are free to diverge here, which was the one
+   reproducible failure in Section 8.2's experiment.
+5. **Verify behaviorally**, by exercising the built REST/MCP interfaces
+   live and checking Guardrails as direct runtime assertions, rather
+   than relying on unit tests alone to define correctness.
+
+See [Section 8](contour.md#8-preliminary-experiment-results) of
+`contour.md` for the full account of building `contour-engine` (Java/
+Spring Boot) and a second, independent `contour-engine-py` (Python/
+FastAPI) from this same record, and what diverged between them.
+
 ## Status
 
 This is a personal working paper (current version noted in `contour.md`),
