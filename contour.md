@@ -1010,3 +1010,36 @@ Contour's structured record is closer in spirit to that kind of precision,
 applied across all seven elements rather than interfaces alone, and
 paired with the lighter-weight diagram those formats don't attempt to
 provide.
+
+---
+ 
+## Changelog
+ 
+- **v0.23** — Consistency pass. Sections 7 and 9 updated to reflect the
+  Section 8 results; build-from-spec claim given its own test item and
+  mapped to Experiment 1. Defined the default one-page diagram (focal
+  Component opened, neighbours closed) in Section 3.2 and labeled the
+  worked example accordingly. `references` redefined as a Context-view
+  summary of obtaining data via the owner's Interface or Event, with its
+  drill-down and its implied `depends-on`; stated that consuming an Event
+  creates no `depends-on`. `uses` added to the `steps` vocabulary;
+  `Validate Order` (not `Calculate Total`) now uses the Inventory Stock
+  API throughout. Component defined by lifecycle everywhere, with
+  deployability as the consequence. Section 8's Requirement and
+  Guardrails introduced before use. Fixed cross-references (principle 1 →
+  2 in 3.4; principle 7 → Section 3 in Section 6; System "drawn view" →
+  composed landscape in Section 7). Removed restatements of: the optional
+  reconstruction disclaimer, the three-audience formula, `calls`
+  mechanism-agnosticism, ordering/branching scope, derived public/private
+  visibility, multi-Function Interfaces, Context-view completeness, soft
+  consistency, defined-once-referenced R&G, and the Section 8 net read.
+  Removed edit-history phrasing ("now exists", "same as before", …).
+  Event example "Order Created" → "Order Placed"; Interface operation
+  "Create Order" → "Place Order". Section 4 states shapes are recommended,
+  the element set normative. Added this Changelog (listed in Contents but
+  missing in v0.22). Worked example now shows a two-Component System:
+  Order Management = Order Service + Order Fulfillment Service, the
+  latter consuming `Order Placed`, owning `Shipment`, producing
+  `Order Shipped` — illustrating that Events cross Component boundaries
+  inside a System too, and that a same-System neighbour is still drawn
+  closed.
