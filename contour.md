@@ -4,7 +4,7 @@
 
 ### Defining logical boundaries — functionality, data, and interfaces — as a business-readable structure for propagating change into code
 
-**Version 0.21** — working draft
+**Version 0.2** — working draft
 
 **Author:** Mykhailo Kulish ([LinkedIn](https://www.linkedin.com/in/mkulish/))
 
@@ -74,13 +74,9 @@ change into code correctly.
 5. [Worked Example](#5-worked-example)
 6. [Limitations and Open Questions](#6-limitations-and-open-questions)
 7. [Next Steps](#7-next-steps)
-8. [Preliminary Experiment Results](#8-preliminary-experiment-results)
-   1. [What proves the approach](#81-what-proves-the-approach)
-   2. [What challenges the approach](#82-what-challenges-the-approach)
-   3. [Net read](#83-net-read)
-9. [Conclusion](#9-conclusion)
-10. [Appendix: Comparison to ArchiMate and C4](#appendix-comparison-to-archimate-and-c4)
-11. [Changelog](#changelog)
+8. [Conclusion](#8-conclusion)
+9. [Appendix: Comparison to ArchiMate and C4](#appendix-comparison-to-archimate-and-c4)
+10. [Changelog](#changelog)
 
 ---
 
@@ -796,10 +792,7 @@ show.
   can often be asserted directly ("rejects orders under $1.00"), while
   a boundary ("doesn't reimplement payment logic") is a statement about
   what the code *doesn't* do, which is much harder to test for than to
-  describe. Section 8 reports a first, narrower pass at this — both
-  Guardrails involved were checked by direct assertion, not grading —
-  and surfaces a related gap: a Guardrail can depend on a Requirement's
-  exact scope without that dependency being visible in the record.
+  describe.
 - **Full reconstruction of an existing system is optional, and
   unproven.** The paper's primary claims are narrower — that a Contour
   record is detailed enough to guide a *specific, described change*
@@ -818,17 +811,15 @@ show.
   testing (Section 7), but answering it isn't a precondition for the
   change-propagation or new-build claims the rest of the paper depends
   on.
-- **The change-propagation claim had, until recently, no experiment
-  behind it.** Everything else in the paper is built on the assumption
-  that a business-language change description, run through a Contour
-  record, reliably produces the correct code change. Section 8 reports
-  a first pass at Section 7's test: two propagated changes, both
-  correct and behaviorally verified, with no core-metamodel violation —
-  a positive, if still preliminary and single-codebase, result. What
-  remains open is precision, not the core claim: every divergence found
-  sat in the physical-schema, naming-heuristic, or payload-shape tier
-  the record leaves underspecified on purpose (Section 8.3), not in
-  whether the record could drive the change at all.
+- **The change-propagation claim is untested — and it is the paper's
+  biggest open question.** No experiment has confirmed that a
+  non-developer's business-language change description, run through a
+  Contour record, reliably produces the correct code change. Everything
+  else in the paper is built on the assumption that it does. It is a
+  smaller and more plausible claim than full reconstruction, but being
+  the more modest of the two is not evidence that it works: Section 7's
+  first test exists specifically to find out, and until it has been
+  run, this is the assumption most worth being sceptical of.
 
 ---
 
@@ -871,141 +862,7 @@ show.
 
 ---
 
-## 8. Preliminary Experiment Results
-
-Two experiments have been run against the test plan in Section 7 — not the
-optional full-reconstruction test (item 2), but the change-propagation test
-(item 1), plus a related test of whether a record is precise enough to drive
-two *independently built* implementations into compatibility with each
-other. Both used `contour-engine`, a Java/Spring Boot implementation of the
-Contour metamodel itself; the first experiment also used a second,
-independently built Python/FastAPI implementation (`contour-engine-py`)
-built from the same, byte-identical record.
-
-- **Experiment 1 — two independent implementations from one record.**
-  `contour-engine` (Java) and `contour-engine-py` (Python), built by
-  different sessions from nothing but the same `contour.yaml`, were run
-  simultaneously against one shared database and cross-called against each
-  other's data.
-- **Experiment 2 — propagating a requested change into existing code.** A
-  plain-language change ("also search Requirements and Guardrails, not just
-  Elements") was routed record-first: the agent read the existing
-  Requirement and Guardrails via the Contour MCP server before touching any
-  code, amended the Requirement (bumping it v1 → v2), then conformed the
-  Java implementation to it, rebuilt, and confirmed the change behaviorally
-  against the live database. A second, self-correcting pass (v2 → v3) used
-  the first pass's own findings to redesign the record — splitting one
-  search Function into three scoped ones — and re-propagated that into code.
-
-Both experiments are documented in full in `EXPERIMENT-REPORT.md` and
-`EXPERIMENT-REPORT-CHANGE-PROPAGATION.md`; this section summarizes what they
-show for the paper's claims.
-
-### 8.1 What proves the approach
-
-- **A record propagates a described change correctly into existing code.**
-  This is Section 1's central claim and the top item of Section 7's test
-  plan, and it held on both passes of Experiment 2: each record amendment
-  was implemented, rebuilt against an already-populated database with a
-  clean migration, and passed a live behavioral acceptance test — without
-  the developer ever pointing at a file.
-- **The record's core semantics reproduce identically across independent
-  implementations.** Given nothing but the same record, the Java and Python
-  engines in Experiment 1 derived the same table shape, ownership rules,
-  relationship semantics, versioning, and delete-cascade behavior. An
-  element created by one was fully readable, linkable, and deletable by the
-  other; cross-ownership and required-field validation rejected the same
-  inputs on both, with the same HTTP status.
-- **Requirements and Guardrails behaved as enforceable obligations, not
-  prose.** Section 3.6 says both should be checked, not merely read: the
-  "Read-only function" and "Proper field indexes" Guardrails held through
-  both iterations of Experiment 2, and the "Uses full-text search"
-  Requirement's version history (v1 → v2 → v3) stands as a legible,
-  auditable record of what the capability was asked to do and why.
-- **Record-first is the workflow an agent reaches for naturally, not one
-  that has to be imposed.** In Experiment 2 the agent read the record before
-  the code and amended the record before touching the code, unprompted —
-  consistent with principle 6 ("the diagram summarizes; the record holds the
-  truth") and principle 8 (the record as guardrail, not retrospective
-  documentation).
-- **"Interfaces Share One Core" held in practice.** Adding two new search
-  Functions required no change to the pre-existing REST endpoint at all — one
-  service-layer change updated both the REST and MCP surfaces together, as
-  the guardrail intends.
-
-### 8.2 What challenges the approach
-
-- **The record specifies logical content, not physical shape — and the gap
-  produced a real, reproducible failure, not just a theoretical one.** The
-  one outright crash observed across both experiments came from this: the
-  record requires full-text search to exist and be indexed, but not how, so
-  the two implementations in Experiment 1 built schema-incompatible physical
-  indexes (a functional index over the whole record body vs. a generated
-  column over named fields) — one engine's search then failed with a 500
-  against the other's schema. Neither the two-view structure (Section 3.2)
-  nor the Requirement/Guardrail layer (Section 3.6) currently distinguishes
-  "must behave the same" from "must be built the same way underneath."
-- **A naming convention stated in prose doesn't have one algorithmic
-  reading.** "Event names are past tense" (Section 3.5) is a convention, not
-  a defined test; the two implementations in Experiment 1 chose different
-  irregular-verb lists and accepted or rejected the identical input (`"Data
-  Given"`) differently. Enforced as a hard validation rule, a rule stated
-  only in natural language will diverge across implementations.
-- **A derived obligation between a Requirement and a Guardrail isn't visible
-  as a dependency.** In Experiment 2, "Proper field indexes" was only
-  correct once "Uses full-text search" defined which fields were in scope;
-  widening the Requirement silently reopened the Guardrail, and nothing in
-  the record structure flagged that coupling — the agent had to infer it to
-  avoid leaving the Guardrail quietly violated.
-- **The record leaves response shape undecided when a change spans more than
-  one kind of thing.** Extending search to cover Requirements and Guardrails
-  as well as Elements (Experiment 2, first pass) forced an undocumented
-  design choice — a discriminated result union vs. separate per-kind
-  results — that a second agent could reasonably resolve differently and
-  still be fully record-compliant, while producing wire-incompatible output.
-  It took a deliberate second record change (splitting into three scoped
-  search Functions) to remove the ambiguity; the original record didn't rule
-  it out.
-- **Section 4's per-element-type node shapes read as ambiguous between
-  normative and illustrative.** The two engines in Experiment 1 rendered the
-  same diagram content (same nodes, same edges) with different shapes and
-  layout conventions, each a plausible reading of Section 4.
-- **Validation payload shape and interface transport are unconstrained by
-  the record.** Both engines in Experiment 1 returned the same HTTP status on
-  invalid input but different violation-payload shapes, and chose
-  incompatible MCP transports (SSE vs. stdio) — less a record ambiguity than
-  a silent gap in what "Interfaces Share One Core" is meant to guarantee:
-  drop-in interchangeability, or only consistent logical behavior.
-- **The relationship-editing model makes small, additive record changes
-  disproportionately risky.** Because a relationship is only editable by
-  wholesale-replacing its owning element's full outgoing edge list, adding
-  two new edges in Experiment 2 required re-submitting a 24-edge and an
-  11-edge list in full — a single omitted edge would have silently deleted a
-  real relationship. This is a tooling gap rather than a metamodel gap, but
-  it bears directly on how safely a record can be evolved, which is the
-  paper's whole premise.
-
-### 8.3 Net read
-
-Both experiments support the paper's central, previously untested claim:
-a readable Contour record is sufficient to drive a described change into
-existing code, and into more than one independently built implementation,
-correctly at the level of core behavior — ownership, relationships,
-versioning, validation outcomes, and cascade semantics all reproduced
-correctly and compatibly, and neither experiment surfaced a single
-core-metamodel violation. Every divergence found sits, as Section 6
-anticipates, in the tier the paper explicitly delegates to the
-record/behavior layer rather than the diagram: physical schema choices, a
-prose naming heuristic, payload and transport shape, and diagram cosmetics.
-The practical implication is about precision rather than the metamodel
-itself: where the record states an obligation but not a physical or
-algorithmic realization of it, two compliant implementations can and will
-diverge — and the paper's guardrail language (Section 3.6) does not yet
-distinguish those two kinds of "compliant."
-
----
-
-## 9. Conclusion
+## 8. Conclusion
 
 Contour is an attempt to answer a narrow but demanding question: can a
 software system's *logical boundary* — its functionality, the data it
