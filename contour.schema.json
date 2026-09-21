@@ -221,7 +221,8 @@
       "additionalProperties": false,
       "required": [
         "name",
-        "description"
+        "description",
+        "exposes"
       ],
       "properties": {
         "name": {"$ref": "#/$defs/name"},

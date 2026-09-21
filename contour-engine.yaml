@@ -18,11 +18,207 @@ System:
   description: >
     A backend engine for storing, searching, and managing Contour
     specifications — the seven-element models and structured records defined by
-    the Contour framework. In this initial specification it is delivered by a
-    single Component, contour-engine; a contour-ui Component is planned and will
-    join the grouping later.
+    the Contour framework. The capability is delivered by two Components: the
+    contour-engine backend, which owns all Contour data and exposes it over a
+    REST API and an MCP server, and the contour-engine-ui Console, a read-oriented
+    front end that browses those specifications through the engine's API.
   guardrails: [Follow Technology Radar]
   groups:
+    - name: contour-engine-ui
+      description: >
+        Front-end Console for contour-engine: an application that lets a person browse and
+        manage everything the engine exposes over its API — the stored Contour elements
+        (Components and the Functions, Interfaces, Events, Data Objects, Systems, and Actors
+        they relate to), the Requirement and Guardrail definitions those elements reference,
+        and the diagrams the engine renders, both for a single element and for a whole model.
+        Alongside browsing it offers create, edit, and delete of elements and definitions,
+        every write submitted to the engine for validation and persistence. It is a separate
+        Component with its own lifecycle from contour-engine, owns no Contour data of its own,
+        and reaches everything through the engine's published interface rather than its
+        datastore.
+      requirements: [Local start composition]
+      guardrails: [No Infrastructure In Model, UI Goes Through The API, UI Owns No Contour Data, Writes Are Validated By The Engine]
+
+      functions:
+        - name: List Components
+          description: >
+            Presents the Components the engine holds as a paginated list a person can
+            scan and pick from, each shown by name and short description.
+          behavior: >
+            Requests a page of Components from the engine (a bounded slice plus the
+            total count, ordered stably by name so paging is repeatable), and presents
+            that page with controls to move to the next or previous page. The list is a
+            browsing entry point into View Element. Holds no Components itself — each
+            page is re-requested from the engine. Presentation only: it never writes.
+          requirements: [Listings Are Paginated]
+          guardrails: [UI Goes Through The API, Read-only function]
+          steps:
+            - uses: Contour REST API
+
+        - name: Search Specifications
+          description: >
+            Lets a person find stored elements by free text over their records —
+            across every element type, not only Components — and presents the matches
+            to open.
+          behavior: >
+            Takes the person's query, asks the engine's full-text specification search
+            for matching elements, and presents the matches ordered by relevance so the
+            best match is first, each labelled with its element type. Selecting a match
+            opens it in View Element. Presentation only: it never writes.
+          requirements: [Uses full-text search]
+          guardrails: [UI Goes Through The API, Read-only function]
+          steps:
+            - uses: Contour REST API
+
+        - name: View Element
+          description: >
+            Shows one selected element of any type in detail — its structured record
+            (description, behavior and ordered steps for a Function, schema for a Data
+            Object/Interface/Event, the requirements and guardrails it references, and
+            its relationships) together with its element-scoped diagram — opened from a
+            list entry or a search result.
+          behavior: >
+            For the selected element, asks the engine for the element's record and for
+            its rendered element-scoped diagram, and presents them together: the
+            record's descriptive and relationship fields in readable form (adapting to
+            the element type — steps for a Function, schema for a Data Object, and so
+            on), and the diagram exactly as the engine renders it. Diagram must be visible (use full widget width)
+            and zoomable. From a relationship shown on the element, the person can open the element on the other end,
+            navigating the model element by element. The engine is authoritative for
+            diagram shape; the Console only displays it. Presentation only: it never
+            writes.
+          guardrails: [UI Goes Through The API, Renders Engine Diagrams Faithfully, Read-only function]
+          steps:
+            - uses: Contour REST API
+
+        - name: View Model Diagram
+          description: >
+            Shows the whole-model diagram for the model a selected element belongs to —
+            every element and relationship in that model on one canvas — as the
+            Context-level counterpart to the element-scoped diagram in View Element.
+          behavior: >
+            For the model of the element in view, asks the engine to render the entire
+            model as a diagram and presents that rendering as-is, letting the person see
+            the element in the context of its whole model rather than only its immediate
+            neighbourhood. The engine is authoritative for diagram shape; the Console
+            only displays it. Presentation only: it never writes.
+          guardrails: [UI Goes Through The API, Renders Engine Diagrams Faithfully, Read-only function]
+          steps:
+            - uses: Contour REST API
+
+        - name: Browse Requirements
+          description: >
+            Lets a person search the Requirement definitions the engine holds and view
+            one in detail — its name and the obligation it states — so the meaning
+            behind a requirement an element references can be read directly.
+          behavior: >
+            Takes the person's query and asks the engine's Requirement search for
+            matching definitions, presenting them by relevance; selecting one asks the
+            engine to retrieve that definition and shows its full description. The
+            requirement names shown on an element in View Element link here. Presentation
+            only: it never writes.
+          requirements: [Uses full-text search]
+          guardrails: [UI Goes Through The API, Read-only function]
+          steps:
+            - uses: Contour REST API
+
+        - name: Browse Guardrails
+          description: >
+            Lets a person search the Guardrail definitions the engine holds and view
+            one in detail — its name and the boundary it states — so the meaning behind
+            a guardrail an element references can be read directly.
+          behavior: >
+            Takes the person's query and asks the engine's Guardrail search for matching
+            definitions, presenting them by relevance; selecting one asks the engine to
+            retrieve that definition and shows its full description. The guardrail names
+            shown on an element in View Element link here. Presentation only: it never
+            writes.
+          requirements: [Uses full-text search]
+          guardrails: [UI Goes Through The API, Read-only function]
+          steps:
+            - uses: Contour REST API
+
+        - name: Edit Element
+          description: >
+            Lets a person create a new Contour element or change an existing one — its
+            name, type, ownership, record body and, through the record's named fields, its
+            relationships — and submit it to the engine to be stored.
+          behavior: >
+            Presents an editable form for the element's fields (adapting to type — steps for
+            a Function, schema for a Data Object, relationship name-lists for a Component, and
+            so on), pre-filled from the engine when editing an existing element and blank when
+            creating a new one. On save, submits the whole element to the engine's Store
+            Element in one call and, on success, shows the stored result. It does not decide
+            validity itself: the engine validates against the Contour metamodel and
+            already-persisted state, and when the engine rejects the submission the Console
+            surfaces the returned validation violations against the offending fields without
+            persisting anything. Editing relationships means editing the record's named
+            fields, never a separate relationship object.
+          guardrails: [UI Goes Through The API, Writes Are Validated By The Engine]
+          steps:
+            - uses: Contour REST API
+
+        - name: Delete Element
+          description: >
+            Lets a person remove a stored Contour element — its record and the relationships
+            it participates in — after confirming the intent.
+          behavior: >
+            Asks the person to confirm, then requests the engine delete the element by its
+            identity. The engine removes the element, its record and its relationships as one
+            operation; the Console reflects the outcome and returns to the list. It performs no
+            cascade logic of its own — removal semantics are the engine's.
+          guardrails: [UI Goes Through The API]
+          steps:
+            - uses: Contour REST API
+
+        - name: Edit Definition
+          description: >
+            Lets a person create a new Requirement or Guardrail definition, or change the
+            description of an existing one, and submit it to the engine to be stored.
+          behavior: >
+            Presents an editable form for a definition's name and description, pre-filled when
+            editing and blank when creating, for either kind (Requirement or Guardrail). On
+            save, submits it to the engine's Store Requirement or Store Guardrail — an upsert
+            keyed on name — and shows the stored result. The engine enforces name and
+            description validity and name uniqueness; the Console surfaces any rejection rather
+            than judging validity itself.
+          guardrails: [UI Goes Through The API, Writes Are Validated By The Engine]
+          steps:
+            - uses: Contour REST API
+
+        - name: Delete Definition
+          description: >
+            Lets a person remove a Requirement or Guardrail definition after confirming the
+            intent, respecting the engine's refusal when the definition is still referenced.
+          behavior: >
+            Asks the person to confirm, then requests the engine delete the definition by
+            name. If the engine refuses because a stored element still references it, the
+            Console surfaces that refusal and leaves the definition in place rather than
+            forcing removal — it never rewrites referencing elements to break the reference on
+            the person's behalf. On success it reflects the removal.
+          guardrails: [UI Goes Through The API, Writes Are Validated By The Engine]
+          steps:
+            - uses: Contour REST API
+
+      interfaces:
+        - name: Contour Console
+          description: >
+            The interactive console surface a person uses to browse and manage Contour
+            specifications — the list, search, element and definition detail, diagram, and
+            create/edit/delete views the Console presents. Its contract is the set of Functions
+            it exposes to its users, independent of any particular presentation technology.
+          exposes:
+            - List Components
+            - Search Specifications
+            - View Element
+            - View Model Diagram
+            - Browse Requirements
+            - Browse Guardrails
+            - Edit Element
+            - Delete Element
+            - Edit Definition
+            - Delete Definition
+
     - name: contour-engine
       description: >
         Backend that persists Contour elements and their records one at a time,
@@ -459,6 +655,21 @@ System:
             deletedAt: timestamp
 
 # ---------------------------------------------------------------------------
+# Actors (Section 3): external roles that use the system through an Interface.
+# Top-level because they sit outside the Component boundary.
+# ---------------------------------------------------------------------------
+
+Actor:
+  - name: Modeler
+    description: >
+      A person who works with Contour specifications — an architect, developer, or
+      analyst — browsing the Components the engine holds and reading their records and
+      diagrams to understand a system. Uses the Console; does not reach the engine
+      directly.
+    uses:
+      - Contour Console
+
+# ---------------------------------------------------------------------------
 # Record-tier definitions (Section 3.6): referenced by name from the elements
 # above, never drawn as diagram elements.
 # ---------------------------------------------------------------------------
@@ -521,6 +732,13 @@ Requirement:
       requested. OpenAPI specification is a contract for external requests and
       responses.
 
+  - name: Listings Are Paginated
+    description: >
+      A listing the Console presents must be paginated — requested from the engine
+      in bounded pages with a stable, repeatable order and a total count — rather
+      than fetching the whole collection at once, so it scales as the number of
+      stored elements grows and a person can page through predictably.
+
 Guardrail:
   - name: Follow Technology Radar
     description: Technology choices must be compatible with environment's Technology Radar.
@@ -563,3 +781,37 @@ Guardrail:
 
   - name: Proper field indexes
     description: Fields that are part of search queries must be properly indexed.
+
+  - name: UI Goes Through The API
+    description: >
+      The Console must reach contour-engine only through the engine's published
+      interface (the Contour REST API), never the engine's datastore directly. It
+      is a front door to the same core, not a second path into the data — the
+      Console reimplements no storage, search, validation, or rendering logic of
+      its own (the counterpart of "Interfaces Share One Core" from the Console's
+      side).
+
+  - name: UI Owns No Contour Data
+    description: >
+      The Console owns no Contour elements, records, or definitions of its own and
+      is not a home for any Data Object. Everything it shows is obtained from
+      contour-engine per request and held only transiently for display; the engine
+      remains the single owner of all Contour data.
+
+  - name: Renders Engine Diagrams Faithfully
+    description: >
+      When the Console shows a diagram it must display the rendering the engine
+      produces, unchanged — the engine is authoritative for diagram shape and
+      notation (Contour Section 4). The Console must not re-derive a diagram from
+      raw elements and relationships or alter the engine's notation; it only
+      presents what the engine renders.
+
+  - name: Writes Are Validated By The Engine
+    description: >
+      Every create, edit, or delete the Console offers must be carried out by
+      submitting it to contour-engine, which validates it against the Contour
+      metamodel, referential rules, and already-persisted state. The Console must
+      not reimplement that validation, decide validity itself, or persist anything
+      of its own; it submits the write and surfaces the engine's outcome — the
+      stored result, the validation violations when a submission is rejected, or the
+      refusal when a definition is still referenced — without working around it.
