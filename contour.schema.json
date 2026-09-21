@@ -1,0 +1,285 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mykhailo-kulish.github.io/contour/contour.schema.json",
+  "title": "Contour model",
+  "description": "A Contour specification in the framework's structured-record style (Section 3) with a nested ownership hierarchy: Components nest under their System (groups), and the elements a Component owns — functions, interfaces, dataObjects, events — nest under that Component. Actors are top-level (they sit outside the Component boundary). Requirement and Guardrail definitions (Section 3.6) are top-level and referenced by name. Ownership is expressed by nesting; cross-boundary edges (groups, exposes, uses, consumes, references, dependsOn) and Function steps are inline by name. No IDs. Field names are camelCase.",
+  "type": "object",
+  "additionalProperties": false,
+  "minProperties": 1,
+  "properties": {
+    "System": {
+      "description": "The business-capability grouping and root of the ownership tree. A model has at most one System in this style; given as a single element or a one-item list.",
+      "oneOf": [
+        {"$ref": "#/$defs/system"},
+        {
+          "type": "array",
+          "items": {"$ref": "#/$defs/system"},
+          "minItems": 1
+        }
+      ]
+    },
+    "Actor": {
+      "description": "An external role that uses the system through an Interface. Top-level because it sits outside the Component boundary. Given as a single element or a list.",
+      "oneOf": [
+        {"$ref": "#/$defs/actor"},
+        {
+          "type": "array",
+          "items": {"$ref": "#/$defs/actor"},
+          "minItems": 1
+        }
+      ]
+    },
+    "Requirement": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/definition"},
+      "minItems": 1,
+      "description": "Record-tier Requirement definitions (Section 3.6), referenced by name from the requirements list of the elements they apply to."
+    },
+    "Guardrail": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/definition"},
+      "minItems": 1,
+      "description": "Record-tier Guardrail definitions (Section 3.6), referenced by name from the guardrails list of the elements they bound."
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Plain-language element name (Section 3.5); the stable identifier other elements reference by."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required plain-language sentence or two — what this element is (Section 3.3)."
+    },
+    "nameList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "A list of element or definition names referenced inline."
+    },
+    "requirements": {
+      "$ref": "#/$defs/nameList",
+      "description": "Names of Requirement definitions this element must satisfy (Section 3.6)."
+    },
+    "guardrails": {
+      "$ref": "#/$defs/nameList",
+      "description": "Names of Guardrail definitions this element must stay inside (Section 3.6)."
+    },
+    "schemaField": {
+      "description": "The structured shape of an element that has one (Section 3.3): an inline mapping of field names to type descriptors, or a string link to an external spec (OpenAPI/AsyncAPI/JSON Schema/Avro) rather than a re-authored duplicate.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "minProperties": 1
+        }
+      ]
+    },
+    "step": {
+      "description": "One entry of a Function's ordered steps list (Section 3.3): a single-key mapping of a step verb to the name of the element it acts on. `consumes` is not a step — it is what triggers a Function (Section 3.4).",
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "propertyNames": {
+        "enum": [
+          "calls",
+          "reads",
+          "modifies",
+          "produces",
+          "uses"
+        ]
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "system": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description"
+      ],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "description": {"$ref": "#/$defs/description"},
+        "requirements": {"$ref": "#/$defs/requirements"},
+        "guardrails": {"$ref": "#/$defs/guardrails"},
+        "groups": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/component"},
+          "minItems": 1,
+          "description": "The Components this System groups, nested as full element objects (ownership by nesting)."
+        }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description"
+      ],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "description": {"$ref": "#/$defs/description"},
+        "requirements": {"$ref": "#/$defs/requirements"},
+        "guardrails": {"$ref": "#/$defs/guardrails"},
+        "uses": {
+          "$ref": "#/$defs/nameList",
+          "description": "Names of the Interfaces this Actor uses."
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description"
+      ],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "description": {"$ref": "#/$defs/description"},
+        "requirements": {"$ref": "#/$defs/requirements"},
+        "guardrails": {"$ref": "#/$defs/guardrails"},
+        "functions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/function"},
+          "minItems": 1,
+          "description": "The Functions this Component performs, nested (ownership by nesting)."
+        },
+        "interfaces": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/interface"},
+          "minItems": 1,
+          "description": "The Interfaces this Component provides, nested."
+        },
+        "dataObjects": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/dataObject"},
+          "minItems": 1,
+          "description": "The Data Objects this Component owns, nested."
+        },
+        "events": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/event"},
+          "minItems": 1,
+          "description": "The Events this Component produces, nested. An Event this Component only reacts to is referenced by name via `consumes`, not nested (it is owned by the producing Component)."
+        },
+        "references": {
+          "$ref": "#/$defs/nameList",
+          "description": "Names of Data Objects owned by another Component that this Component reads/references (Context-view resolution)."
+        },
+        "consumes": {
+          "$ref": "#/$defs/nameList",
+          "description": "Names of Events produced by another Component that this Component reacts to (Context-view summary)."
+        },
+        "dependsOn": {
+          "$ref": "#/$defs/nameList",
+          "description": "Names of Components this Component depends on (Context-view directed dependency)."
+        }
+      }
+    },
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description"
+      ],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "description": {"$ref": "#/$defs/description"},
+        "requirements": {"$ref": "#/$defs/requirements"},
+        "guardrails": {"$ref": "#/$defs/guardrails"},
+        "behavior": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Prose account of business rules and side effects, precise enough that its logic isn't left for an LLM to invent (Section 3.3)."
+        },
+        "steps": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/step"},
+          "minItems": 1,
+          "description": "Ordered list of the Function's own calls/reads/modifies/produces/uses edges — the authoritative sequence the diagram's edges summarize (Section 3.3). A Function deliberately has no `schema` of its own."
+        }
+      }
+    },
+    "interface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description"
+      ],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "description": {"$ref": "#/$defs/description"},
+        "requirements": {"$ref": "#/$defs/requirements"},
+        "guardrails": {"$ref": "#/$defs/guardrails"},
+        "schema": {"$ref": "#/$defs/schemaField"},
+        "exposes": {
+          "$ref": "#/$defs/nameList",
+          "description": "Names of the Functions this Interface exposes (its own Component's Functions only)."
+        }
+      }
+    },
+    "dataObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description"
+      ],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "description": {"$ref": "#/$defs/description"},
+        "requirements": {"$ref": "#/$defs/requirements"},
+        "guardrails": {"$ref": "#/$defs/guardrails"},
+        "schema": {"$ref": "#/$defs/schemaField"}
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name",
+          "description": "Event name, in the past tense (Section 3.5), e.g. \"Order Placed\"."
+        },
+        "description": {"$ref": "#/$defs/description"},
+        "requirements": {"$ref": "#/$defs/requirements"},
+        "guardrails": {"$ref": "#/$defs/guardrails"},
+        "schema": {"$ref": "#/$defs/schemaField"}
+      }
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description"
+      ],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "description": {"$ref": "#/$defs/description"}
+      },
+      "description": "A record-tier Requirement or Guardrail definition (Section 3.6): a name and a description, referenced by name from the elements it applies to. Never drawn as a diagram element."
+    }
+  }
+}
