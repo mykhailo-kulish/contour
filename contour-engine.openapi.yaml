@@ -1,0 +1,831 @@
+openapi: 3.1.0
+info:
+  title: Contour REST API
+  version: 0.2.0
+  description: >
+    REST/JSON API for creating, searching, retrieving, and deleting Contour elements,
+    and for managing the Requirement and Guardrail definitions they reference, worked at
+    element granularity rather than as a whole submitted model. Primary contract of
+    contour-engine, designed to also back a future contour-ui Component.
+
+    This document is the source of truth for the Contour REST API contract (requirement:
+    Keep OpenAPI specification up-to-date). It is kept in sync with contour.yaml and the
+    controller implementation whenever either changes.
+
+servers:
+  - url: /
+
+tags:
+  - name: Contour Elements
+    description: Store, delete, search, and retrieve Contour elements
+  - name: Contour Requirements
+    description: >
+      Store, retrieve, and delete Contour Requirement definitions — positive obligations
+      referenced by name from the elements that must satisfy them (Section 3.6).
+  - name: Contour Guardrails
+    description: >
+      Store, retrieve, and delete Contour Guardrail definitions — boundaries referenced by
+      name from the elements they bound (Section 3.6).
+  - name: Contour Diagrams
+    description: Render a stored model's Context-view diagram, or a single element's diagram
+
+paths:
+  /elements:
+    post:
+      tags: [Contour Elements]
+      operationId: storeElement
+      summary: Store Element
+      description: >
+        Creates or updates one Contour element and the outgoing relationships it declares. An
+        element's relationships are fully managed by field declarations in its record (Contour
+        spec, Section 3): each edge is a named field referencing the other end by element name
+        (e.g. an Interface's `exposes`, an Actor's `uses`, a Component's `performs`/`owns`/
+        `produces`/`references`/`consumes`/`dependsOn`, a System's `groups`, and a Function's
+        `calls`/`reads`/`modifies`/`produces`/`uses` inside `steps`). Validates the element
+        against the Contour metamodel invariants and against already-persisted state before
+        persisting anything (guardrail: Validation Precedes Persistence). Every element named
+        by a relationship field must already exist as a persisted element, and every
+        Requirement and Guardrail the element references (in record.requirements /
+        record.guardrails) must already be a stored definition (guardrail: Referenced
+        Definitions Must Exist).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ElementRequest'
+      responses:
+        '201':
+          description: Element stored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ElementView'
+        '422':
+          description: >
+            The submitted element or one of the relationships it declares failed validation
+            (e.g. an element named by a relationship field does not exist yet, an ownership
+            boundary is violated, or a referenced Requirement/Guardrail is not defined).
+            Nothing was persisted.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+    get:
+      tags: [Contour Elements]
+      operationId: listOrSearchElements
+      summary: Search Specifications / List Elements
+      description: >
+        Two modes on one endpoint:
+
+        - **Search Specifications** — when `q` is given, finds stored Contour elements by free
+          text over their record bodies (description/behavior/schema) and returns the flat
+          match list (`SearchResult[]`). Element-scoped: Requirement and Guardrail definitions
+          are searched via GET /requirements?q= and GET /guardrails?q=.
+
+        - **List Elements** — when `q` is omitted, lists stored elements ordered by name,
+          optionally filtered by `type`, with pagination, returning a `PagedResult`. Backs a
+          browsing UI's listing (e.g. the Console's List Components uses `type=COMPONENT`).
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Free-text search query. When present, the endpoint searches; when omitted, it lists.
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ElementType'
+          description: (List mode only) restrict the listing to one element type, e.g. COMPONENT.
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: (List mode only) zero-based page index.
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 200
+          description: (List mode only) page size.
+      responses:
+        '200':
+          description: >
+            In search mode (`q` present), the array of matching elements. In list mode
+            (`q` omitted), a page of elements plus paging metadata.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/SearchResult'
+                  - $ref: '#/components/schemas/PagedResult'
+
+  /elements/{id}:
+    get:
+      tags: [Contour Elements]
+      operationId: retrieveElement
+      summary: Retrieve Element
+      description: >
+        Returns one stored element by id — its own record body, including the relationship
+        fields it declares (Section 3). Does not return the whole model the element belongs to,
+        nor incoming edges declared by other elements.
+      parameters:
+        - $ref: '#/components/parameters/ElementId'
+      responses:
+        '200':
+          description: The element and its record (with its declared relationship fields).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ElementView'
+        '404':
+          description: No element exists with this id.
+    delete:
+      tags: [Contour Elements]
+      operationId: deleteElement
+      summary: Delete Element
+      description: >
+        Removes one stored element and its record, along with the relationship edges it
+        participates in. A no-op success if the element does not exist.
+      parameters:
+        - $ref: '#/components/parameters/ElementId'
+      responses:
+        '204':
+          description: The element (if it existed) has been removed.
+
+  /elements/{id}/diagram:
+    get:
+      tags: [Contour Diagrams]
+      operationId: renderElementDiagram
+      summary: Render Element Diagram
+      description: >
+        Renders a Mermaid diagram scoped to a single element and its immediate relationships —
+        the element plus every relationship where it is either endpoint (outgoing and
+        incoming) and the elements on the other ends. The element-scoped counterpart to
+        Render Diagram. Read-only.
+      parameters:
+        - $ref: '#/components/parameters/ElementId'
+      responses:
+        '200':
+          description: Mermaid diagram source.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No element exists with this id.
+
+  /requirements:
+    post:
+      tags: [Contour Requirements]
+      operationId: storeRequirement
+      summary: Store Requirement
+      description: >
+        Creates or updates one Contour Requirement definition, addressed by name. A
+        Requirement is a record-tier concept (Section 3.6) — a positive obligation an element
+        must satisfy — defined once here and referenced by name from the elements that must
+        satisfy it. Requires a non-blank name and description. Upserts in a single
+        transaction (requirement: Definition Write Is Atomic); a name collision with an
+        existing Requirement updates it rather than creating a duplicate (requirement:
+        Definition Name Is Unique).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DefinitionRequest'
+      responses:
+        '200':
+          description: Requirement stored (created or updated).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefinitionView'
+        '422':
+          description: The submitted Requirement is missing a name or description. Nothing was persisted.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+    get:
+      tags: [Contour Requirements]
+      operationId: searchRequirements
+      summary: Search Requirements
+      description: >
+        Finds stored Contour Requirement definitions by free text over their name and
+        description. Read-only; the definition-scoped counterpart to Search Specifications.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Free-text search query.
+      responses:
+        '200':
+          description: Matching Requirement definitions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DefinitionSearchResult'
+
+  /requirements/{name}:
+    get:
+      tags: [Contour Requirements]
+      operationId: retrieveRequirement
+      summary: Retrieve Requirement
+      description: Returns one stored Contour Requirement definition by name. Read-only.
+      parameters:
+        - $ref: '#/components/parameters/DefinitionName'
+      responses:
+        '200':
+          description: The Requirement definition.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefinitionView'
+        '404':
+          description: No Requirement exists with this name.
+    delete:
+      tags: [Contour Requirements]
+      operationId: deleteRequirement
+      summary: Delete Requirement
+      description: >
+        Removes one stored Contour Requirement definition by name. A no-op success if the
+        Requirement does not exist. A Requirement still referenced by a stored element must
+        not be left dangling (guardrail: Referenced Definitions Must Exist): the delete is
+        refused with 409 while any element still references it.
+      parameters:
+        - $ref: '#/components/parameters/DefinitionName'
+      responses:
+        '204':
+          description: The Requirement (if it existed) has been removed.
+        '409':
+          description: >
+            The Requirement is still referenced by one or more stored elements and cannot be
+            deleted until those references are removed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+
+  /guardrails:
+    post:
+      tags: [Contour Guardrails]
+      operationId: storeGuardrail
+      summary: Store Guardrail
+      description: >
+        Creates or updates one Contour Guardrail definition, addressed by name. A Guardrail is
+        a record-tier concept (Section 3.6) — a boundary an element's implementation must stay
+        inside — defined once here and referenced by name from the elements it bounds. Requires
+        a non-blank name and description. Upserts in a single transaction (requirement:
+        Definition Write Is Atomic); a name collision with an existing Guardrail updates it
+        rather than creating a duplicate (requirement: Definition Name Is Unique).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DefinitionRequest'
+      responses:
+        '200':
+          description: Guardrail stored (created or updated).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefinitionView'
+        '422':
+          description: The submitted Guardrail is missing a name or description. Nothing was persisted.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+    get:
+      tags: [Contour Guardrails]
+      operationId: searchGuardrails
+      summary: Search Guardrails
+      description: >
+        Finds stored Contour Guardrail definitions by free text over their name and
+        description. Read-only; the definition-scoped counterpart to Search Specifications.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Free-text search query.
+      responses:
+        '200':
+          description: Matching Guardrail definitions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DefinitionSearchResult'
+
+  /guardrails/{name}:
+    get:
+      tags: [Contour Guardrails]
+      operationId: retrieveGuardrail
+      summary: Retrieve Guardrail
+      description: Returns one stored Contour Guardrail definition by name. Read-only.
+      parameters:
+        - $ref: '#/components/parameters/DefinitionName'
+      responses:
+        '200':
+          description: The Guardrail definition.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefinitionView'
+        '404':
+          description: No Guardrail exists with this name.
+    delete:
+      tags: [Contour Guardrails]
+      operationId: deleteGuardrail
+      summary: Delete Guardrail
+      description: >
+        Removes one stored Contour Guardrail definition by name. A no-op success if the
+        Guardrail does not exist. A Guardrail still referenced by a stored element must not be
+        left dangling (guardrail: Referenced Definitions Must Exist): the delete is refused
+        with 409 while any element still references it.
+      parameters:
+        - $ref: '#/components/parameters/DefinitionName'
+      responses:
+        '204':
+          description: The Guardrail (if it existed) has been removed.
+        '409':
+          description: >
+            The Guardrail is still referenced by one or more stored elements and cannot be
+            deleted until those references are removed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+
+  /models/{id}/diagram:
+    get:
+      tags: [Contour Diagrams]
+      operationId: renderDiagram
+      summary: Render Diagram
+      description: >
+        Renders a stored model as a Mermaid Context-view diagram, assembled from every
+        persisted element and relationship belonging to this modelId. The one Function still
+        worked at whole-model granularity.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The model id shared by the elements to render.
+      responses:
+        '200':
+          description: Mermaid diagram source.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No elements exist for this modelId.
+
+components:
+  parameters:
+    ElementId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: The element's id.
+
+    DefinitionName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+      description: >
+        The Requirement or Guardrail name — the stable identifier elements reference by
+        (Section 3.6). Used as the primary key for both definition kinds.
+
+  schemas:
+    ElementType:
+      type: string
+      enum: [SYSTEM, COMPONENT, FUNCTION, INTERFACE, EVENT, DATA_OBJECT, ACTOR]
+
+    NameList:
+      type: array
+      description: A list of element or definition names referenced inline (Section 3.5). Non-empty, unique.
+      minItems: 1
+      uniqueItems: true
+      items:
+        type: string
+        minLength: 1
+
+    SchemaField:
+      description: >
+        The structured shape of an element that has one (Section 3.3): an inline mapping of
+        field names to type descriptors, or a string link to an external spec
+        (OpenAPI/AsyncAPI/JSON Schema/Avro) rather than a re-authored duplicate.
+      oneOf:
+        - type: string
+          minLength: 1
+        - type: object
+          minProperties: 1
+
+    Step:
+      type: object
+      description: >
+        One entry of a Function's ordered steps list (Section 3.3): a single-key mapping of a
+        step verb to the name of the element it acts on. `consumes` is not a step — it is what
+        triggers a Function (Section 3.4).
+      minProperties: 1
+      maxProperties: 1
+      propertyNames:
+        enum: [calls, reads, modifies, produces, uses]
+      additionalProperties:
+        type: string
+        minLength: 1
+
+    ContourRecord:
+      description: >
+        The structured-record body (Section 3.3) attached to an element, stored as JSONB. Its
+        shape depends on the element's elementType; the variants below carry the type-specific
+        fields.
+
+        Relationships are fully managed by field declarations (Contour spec, Section 3):
+        every edge is declared as a named field on its owning element and references the other
+        end by element name (the stable identifier, Section 3.5) — there is no separate
+        relationship object. A System declares its Components in `groups`; a Component declares
+        the Functions it `performs`, the Data Objects it `owns`, the Events it `produces`, and
+        its `references`/`consumes`/`dependsOn` edges; an Interface declares `exposes`; an
+        Actor declares `uses`; and a Function declares its own `calls`/`reads`/`modifies`/
+        `produces`/`uses` edges, in order, inside `steps`. `consumes` is a Component-level
+        field, not a Function step — it is what triggers a Function (Section 3.4).
+
+        The variants overlap (a bare description-only body is valid for several element types),
+        so anyOf is used rather than oneOf: the element's elementType field selects which
+        variant applies. Record bodies are stored as open JSONB objects.
+      anyOf:
+        - $ref: '#/components/schemas/SystemRecord'
+        - $ref: '#/components/schemas/ActorRecord'
+        - $ref: '#/components/schemas/ComponentRecord'
+        - $ref: '#/components/schemas/FunctionRecord'
+        - $ref: '#/components/schemas/InterfaceRecord'
+        - $ref: '#/components/schemas/DataObjectRecord'
+        - $ref: '#/components/schemas/EventRecord'
+
+    RecordBase:
+      type: object
+      description: Fields common to every element's record body (Section 3.3, 3.6).
+      required: [description]
+      properties:
+        description:
+          type: string
+          minLength: 1
+          description: Required plain-language sentence or two — what this element is (Section 3.3).
+        requirements:
+          allOf:
+            - $ref: '#/components/schemas/NameList'
+          description: Names of Requirement definitions this element must satisfy (Section 3.6).
+        guardrails:
+          allOf:
+            - $ref: '#/components/schemas/NameList'
+          description: Names of Guardrail definitions this element must stay inside (Section 3.6).
+
+    SystemRecord:
+      description: >
+        Record body for a SYSTEM element — the business-capability grouping and root of the
+        ownership tree.
+      allOf:
+        - $ref: '#/components/schemas/RecordBase'
+        - type: object
+          properties:
+            groups:
+              allOf:
+                - $ref: '#/components/schemas/NameList'
+              description: >
+                Names of the Components this System groups (the `groups` edge, System →
+                Component; Section 3). A Component belongs to exactly one System.
+
+    ActorRecord:
+      description: >
+        Record body for an ACTOR element — an external role that uses the system through an
+        Interface. Sits outside the Component boundary.
+      allOf:
+        - $ref: '#/components/schemas/RecordBase'
+        - type: object
+          properties:
+            uses:
+              allOf:
+                - $ref: '#/components/schemas/NameList'
+              description: >
+                Names of the Interfaces this Actor uses (the `uses` edge, Actor → Interface;
+                Section 3).
+
+    ComponentRecord:
+      description: >
+        Record body for a COMPONENT element. A Component declares every edge it owns as a named
+        field: the Functions it `performs`, the Data Objects it `owns`, the Events it
+        `produces`, and its Context-view `references`/`consumes`/`dependsOn` edges.
+      allOf:
+        - $ref: '#/components/schemas/RecordBase'
+        - type: object
+          properties:
+            performs:
+              allOf:
+                - $ref: '#/components/schemas/NameList'
+              description: >
+                Names of the Functions this Component performs (the `performs` edge, Component →
+                Function; Section 3).
+            owns:
+              allOf:
+                - $ref: '#/components/schemas/NameList'
+              description: >
+                Names of the Data Objects this Component owns — its single home for each (the
+                `owns` edge, Component → Data Object; Section 3, principle 4).
+            produces:
+              allOf:
+                - $ref: '#/components/schemas/NameList'
+              description: >
+                Names of the Events this Component produces (the Component-level `produces`
+                edge; a Context-view summary of which of its Functions produce them, Section
+                3.4).
+            references:
+              allOf:
+                - $ref: '#/components/schemas/NameList'
+              description: >
+                Names of Data Objects owned by another Component that this Component
+                references — obtained from the owner through an Interface or Event, never
+                direct access (the `references` edge; Context-view resolution, Section 3).
+            consumes:
+              allOf:
+                - $ref: '#/components/schemas/NameList'
+              description: >
+                Names of Events produced by another Component that this Component reacts to
+                (the Component-level `consumes` edge; Context-view summary, Section 3.4).
+            dependsOn:
+              allOf:
+                - $ref: '#/components/schemas/NameList'
+              description: >
+                Names of Components this Component depends on (the `depends-on` edge; a
+                Context-view summary of a uses→exposes chain, Section 3.2).
+
+    FunctionRecord:
+      description: >
+        Record body for a FUNCTION element — the internal behavior a Component performs. A
+        Function deliberately has no schema of its own (Section 3.3). Its outgoing edges
+        (`calls`/`reads`/`modifies`/`produces`/`uses`) are declared, in order, in `steps`.
+      allOf:
+        - $ref: '#/components/schemas/RecordBase'
+        - type: object
+          properties:
+            behavior:
+              type: string
+              minLength: 1
+              description: >
+                Prose account of business rules and side effects, precise enough that its logic
+                isn't left for an LLM to invent (Section 3.3).
+            steps:
+              type: array
+              minItems: 1
+              description: >
+                Ordered list of the Function's own calls/reads/modifies/produces/uses edges,
+                each referencing its target element by name — the authoritative sequence the
+                diagram's edges summarize (Section 3.3). This is where a Function declares all
+                its outgoing relationships; `consumes` is not a step (Section 3.4).
+              items:
+                $ref: '#/components/schemas/Step'
+
+    InterfaceRecord:
+      description: >
+        Record body for an INTERFACE element — a point of access a Component provides. Exposes
+        only Functions of its own Component.
+      allOf:
+        - $ref: '#/components/schemas/RecordBase'
+        - type: object
+          properties:
+            schema:
+              $ref: '#/components/schemas/SchemaField'
+            exposes:
+              allOf:
+                - $ref: '#/components/schemas/NameList'
+              description: >
+                Names of the Functions this Interface exposes, its own Component's Functions
+                only (the `exposes` edge, Interface → Function; Section 3).
+
+    DataObjectRecord:
+      description: Record body for a DATA_OBJECT element — a data structure a Component owns.
+      allOf:
+        - $ref: '#/components/schemas/RecordBase'
+        - type: object
+          properties:
+            schema:
+              $ref: '#/components/schemas/SchemaField'
+
+    EventRecord:
+      description: >
+        Record body for an EVENT element — a significant occurrence a Component produces. Event
+        names are past tense (Section 3.5), e.g. "Order Placed".
+      allOf:
+        - $ref: '#/components/schemas/RecordBase'
+        - type: object
+          properties:
+            schema:
+              $ref: '#/components/schemas/SchemaField'
+
+    ElementRequest:
+      type: object
+      required: [name, elementType]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Omit to create a new element; provide to update an existing one.
+        modelId:
+          type: string
+          format: uuid
+          description: Groups this element with others in the same specification. Assigned if omitted.
+        name:
+          type: string
+        elementType:
+          $ref: '#/components/schemas/ElementType'
+        systemId:
+          type: string
+          format: uuid
+          description: Owning System id. Required for Components.
+        componentId:
+          type: string
+          format: uuid
+          description: Owning Component id. Required for Functions/Interfaces/Data Objects/Events.
+        record:
+          $ref: '#/components/schemas/ContourRecord'
+
+    ElementView:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        modelId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        elementType:
+          $ref: '#/components/schemas/ElementType'
+        systemId:
+          type: string
+          format: uuid
+        componentId:
+          type: string
+          format: uuid
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        record:
+          $ref: '#/components/schemas/ContourRecord'
+
+    SearchResult:
+      type: object
+      description: One matching element returned by Search Specifications (element-scoped).
+      properties:
+        elementId:
+          type: string
+          format: uuid
+        modelId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        elementType:
+          type: string
+        description:
+          type: string
+
+    PagedResult:
+      type: object
+      description: >
+        One page of elements plus paging metadata, returned by GET /elements in list mode
+        (no `q`). Lets a caller page through all matching elements (e.g. the Console's List
+        Components).
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        page:
+          type: integer
+          description: Zero-based page index.
+        size:
+          type: integer
+          description: Page size.
+        totalElements:
+          type: integer
+          format: int64
+          description: Total number of matching elements across all pages.
+        totalPages:
+          type: integer
+          description: Total number of pages.
+
+    DefinitionSearchResult:
+      type: object
+      description: >
+        One matching Contour Requirement or Guardrail definition returned by Search
+        Requirements / Search Guardrails. A definition is addressed by name and has no element
+        identity, so only its name and description are returned.
+      required: [name, description]
+      properties:
+        name:
+          type: string
+          description: The definition's name — its identifier and what elements reference it by.
+        description:
+          type: string
+          description: The definition's plain-language body.
+
+    DefinitionRequest:
+      type: object
+      required: [name, description]
+      description: >
+        A Contour Requirement or Guardrail definition submitted for storage. Both kinds share
+        this shape: a name (the identifier elements reference by) and a plain-language
+        description body. Store is an upsert keyed on name.
+      properties:
+        name:
+          type: string
+          description: >
+            The stable identifier elements reference by. Non-blank. A collision with an
+            existing definition of the same kind updates it (Definition Name Is Unique).
+        description:
+          type: string
+          description: >
+            For a Requirement, the positive obligation in plain language; for a Guardrail, the
+            boundary the implementation must not cross. Non-blank.
+
+    DefinitionView:
+      type: object
+      description: >
+        A stored Contour Requirement or Guardrail definition, as returned by Store and
+        Retrieve. Addressed by name.
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        version:
+          type: integer
+          description: Bumped on every store call; reported on the corresponding Stored event.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ValidationProblem:
+      type: object
+      description: RFC 9457 problem+json body returned when Validate Element rejects a submission.
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+          example: Contour element failed validation
+        status:
+          type: integer
+          example: 422
+        detail:
+          type: string
+        instance:
+          type: string
+        violations:
+          type: array
+          items:
+            type: object
+            properties:
+              ref:
+                type: string
+              message:
+                type: string
