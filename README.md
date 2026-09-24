@@ -21,7 +21,9 @@ structured record underneath for behavior, schemas, and contracts.
 
 - [`contour.md`](contour.md) — the framework specification: motivation,
   design principles, metamodel, notation, a worked example, and a
-  preliminary experiment applying Contour to propagate a change into code.
+  preliminary experiments — propagating a change into code, building
+  independent implementations from one record, and building a new
+  Component from the record of a real legacy subsystem.
 - [`contour.schema.json`](contour.schema.json) — the JSON Schema for
   Contour's structured-record style, defining how System, Component,
   Function, Interface, Event, Data Object, Actor, Requirement, and
