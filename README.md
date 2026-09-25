@@ -20,8 +20,16 @@ structured record underneath for behavior, schemas, and contracts.
 ## Contents
 
 - [`contour.md`](contour.md) — the framework specification: motivation,
-  design principles, metamodel, notation, a worked example, and a
-  preliminary experiment applying Contour to propagate a change into code.
+  design principles, metamodel, notation, a worked example, limitations,
+  and conclusion.
+- [`contour-experiments.md`](contour-experiments.md) — the evidence log
+  and roadmap: three preliminary experiments (propagating a change into
+  code, building independent implementations from one record, and
+  building a new Component from the record of a real legacy subsystem),
+  what they prove and challenge, and the next steps.
+- [`EXPERIMENT-NOTES-ANONYMIZED.md`](EXPERIMENT-NOTES-ANONYMIZED.md) —
+  the sanitized live log of the legacy-subsystem experiment (Experiment
+  3), including its second, source-verified comparison pass.
 - [`contour.schema.json`](contour.schema.json) — the JSON Schema for
   Contour's structured-record style, defining how System, Component,
   Function, Interface, Event, Data Object, Actor, Requirement, and
@@ -35,7 +43,7 @@ structured record underneath for behavior, schemas, and contracts.
 
 `contour-engine.yaml` is a Contour spec, not documentation of existing
 code — it's meant to be built from directly by an LLM agent, the way
-Section 8's experiments did it. The workflow:
+the experiments in `contour-experiments.md` did it. The workflow:
 
 1. **Put the framework paper in the agent's context.** Load
    [`contour.md`](contour.md) into your LLM agent's context — as a file
@@ -68,15 +76,15 @@ Section 8's experiments did it. The workflow:
    full-text and indexed) but not implementation shape (e.g. a
    functional index vs. a generated column) — two independent builds
    from the same record are free to diverge here, which was the one
-   reproducible failure in Section 8.2's experiment.
+   reproducible failure in Experiment 1 (`contour-experiments.md` §3).
 5. **Verify behaviorally**, by exercising the built REST/MCP interfaces
    live and checking Guardrails as direct runtime assertions, rather
    than relying on unit tests alone to define correctness.
 
-See [Section 8](contour.md#8-preliminary-experiment-results) of
-`contour.md` for the full account of building `contour-engine` (Java/
-Spring Boot) and a second, independent `contour-engine-py` (Python/
-FastAPI) from this same record, and what diverged between them.
+See [`contour-experiments.md`](contour-experiments.md) for the full
+account of building `contour-engine` (Java/Spring Boot) and a second,
+independent `contour-engine-py` (Python/FastAPI) from this same record,
+and what diverged between them.
 
 ## Status
 

@@ -4,7 +4,7 @@
 
 ### Defining logical boundaries — functionality, data, and interfaces — as a business-readable structure for propagating change into code
 
-**Version 0.23** — working draft
+**Version 0.3** — working draft
 
 **Author:** Mykhailo Kulish ([LinkedIn](https://www.linkedin.com/in/mkulish/))
 
@@ -38,8 +38,13 @@ add up to.
 
 The paper claims two things: that a readable Contour record is enough to
 propagate a described change into an existing codebase correctly, and
-enough to build a new Component from as a spec. A first experiment
-(Section 8) supports both on one small codebase. A third, harder
+enough to build a new Component from as a spec. The evidence lives in a
+companion document, [`contour-experiments.md`](contour-experiments.md),
+which also carries the roadmap. In short: preliminary experiments
+support both claims on one small codebase. On a real undocumented
+legacy subsystem they support the second only for structure: the
+record was a sufficient spec for the new Component's shape, not for its
+detailed behavior. A third, harder
 possibility — reconstructing an existing system's real prior behavior
 from its record alone — is left explicitly **optional** and untested;
 nothing else here depends on it.
@@ -73,14 +78,12 @@ change into code correctly.
 4. [Notation](#4-notation)
 5. [Worked Example](#5-worked-example)
 6. [Limitations and Open Questions](#6-limitations-and-open-questions)
-7. [Next Steps](#7-next-steps)
-8. [Preliminary Experiment Results](#8-preliminary-experiment-results)
-   1. [What proves the approach](#81-what-proves-the-approach)
-   2. [What challenges the approach](#82-what-challenges-the-approach)
-   3. [Net read](#83-net-read)
-9. [Conclusion](#9-conclusion)
-10. [Appendix: Comparison to ArchiMate and C4](#appendix-comparison-to-archimate-and-c4)
-11. [Changelog](#changelog)
+7. [Conclusion](#7-conclusion)
+8. [Appendix: Comparison to ArchiMate and C4](#appendix-comparison-to-archimate-and-c4)
+9. [Changelog](#changelog)
+
+Experiment results and the roadmap live in the companion document
+[`contour-experiments.md`](contour-experiments.md).
 
 ---
 
@@ -376,7 +379,7 @@ than per element. Beyond that, a Function carries `behavior` and
 
 A sketch of what this looks like as data (illustrative, not the final
 syntax — the serialization used in the experiments is described in
-Section 8):
+`contour-experiments.md`):
 
 ```yaml
 Function: Place Order
@@ -679,6 +682,10 @@ diagram never had to show.
 
 ## 6. Limitations and Open Questions
 
+Where a limitation has been observed in practice, the bullet points to
+the evidence in [`contour-experiments.md`](contour-experiments.md)
+("Experiments" below), which also carries the roadmap for closing it.
+
 - **No layering** means Contour cannot, by itself, connect a system model
   to business capability *mapping* or strategy — the portfolio-level
   discipline of tracing systems to an enterprise capability model. It
@@ -695,9 +702,12 @@ diagram never had to show.
 - **`steps` covers the straight line only.** Branching and parallelism
   ("these two run at once," "only call Calculate Total if validation
   passed") are outside the metamodel, as are Data Object state
-  transitions (Section 3.4). Worth revisiting once the experiments show
-  whether real systems need conditional or parallel steps often enough
-  to justify the added complexity.
+  transitions (Section 3.4). Experiment 3 is the first evidence that
+  real systems need conditional steps: three of its six behavioral
+  defects were branch structure the list could not hold (Experiments
+  §3). Whether to extend `steps`, or to require such branches as named
+  Requirements with their conditions spelled out, is now a live
+  question.
 - **Same function, differently-shaped interfaces.** Because a Function
   is the single unit of both behavior and contract, a capability
   exposed through two interfaces with genuinely different shapes (e.g.
@@ -713,13 +723,15 @@ diagram never had to show.
   versa — the two can drift apart silently unless a modeler or tooling
   checks them against each other. Whether that check should become
   mandatory is worth revisiting now that a serialization exists to
-  enforce it (Section 8).
+  enforce it (Experiments §1).
 - **Requirement and Guardrail compliance grading is only partly tested.**
   Section 3.6 prescribes checking both, but *how* — a hard test
   assertion versus an LLM grading the resulting code against a
   `description` — gives very different reliability guarantees, and only
-  the first has been tried (Section 8: both Guardrails involved were
-  checked by direct assertion). Guardrails may be the harder of the two:
+  the first has been tried. The experiments also showed the limit of
+  direct assertion: a test derived from a Requirement is only as
+  precise as the Requirement's text (Experiments §2, §3). Guardrails may
+  be the harder of the two:
   a Requirement can often be asserted directly ("rejects orders under
   $1.00"), while a boundary ("doesn't reimplement payment logic") is a
   statement about what the code *doesn't* do, which is much harder to
@@ -733,196 +745,41 @@ diagram never had to show.
   prior behavior" is a guess: a Function's `behavior` field, in
   particular, could easily be under-specified for anything beyond
   toy-sized logic, or could balloon into effectively re-writing the
-  source in prose. Answering that isn't a precondition for the
-  change-propagation or build-from-spec claims the rest of the paper
-  depends on.
-- **The two primary claims rest on one preliminary experiment.** Section
-  8 reports a single-codebase result: two propagated changes and two
-  independent builds from one record, all correct at the level of core
-  behavior. What that leaves open is precision, not the core claim —
-  see Section 8.3.
+  source in prose. Experiment 3 gives the first real data points, and
+  they point toward under-specification: on that evidence, a
+  record-only rebuild of that subsystem would have shipped several real
+  defects (Experiments §3, §4). Answering that isn't a precondition for
+  the change-propagation or build-from-spec claims the rest of the
+  paper depends on.
+- **No failure policy on a `uses` edge.** A `uses` relation says that a
+  Function depends on another Component's Interface. It does not say
+  what the Function does when that Interface fails outright. Experiment
+  3 needed that decision for every integration client and had to infer
+  it (Experiments §3). Whether it belongs in a Requirement or Guardrail
+  on the using Function, or in the edge's own record, is open.
+- **No distinction between a current and a target record.** A record can
+  describe a Component as it is or as it is meant to become, and legacy
+  extraction needs both. Experiment 3's record described a target
+  Component that did not yet exist as its own lifecycle, and the
+  decomposition status of its dependencies had to be carried outside
+  the metamodel (Experiments §3).
+- **Existing consumers aren't a first-class constraint.** An Event or
+  Interface whose `schema` is already bound to live consumers constrains
+  the Component's own choices, such as identifier type. Nothing in the
+  record marks that constraint, so in Experiment 3 it surfaced only when
+  a real consumer schema was checked (Experiments §3).
+- **The two primary claims rest on three preliminary experiments, each a
+  single run.** Two propagated changes and two independent builds on
+  one small codebase, plus one build from a record of a real legacy
+  subsystem — the latter checked against the record and, statically,
+  against the legacy source, but never run against the legacy system's
+  behavior. On the small codebase, what this leaves open is precision.
+  On the legacy subsystem, it also leaves open whether a record can
+  carry detailed behavior at all (Experiments §4).
 
 ---
 
-## 7. Next Steps
-
-1. **Repeat the change-propagation test beyond one codebase.** Section 8
-   shows it working on a small, self-describing system. The next runs
-   should use a codebase that is not itself a Contour implementation,
-   with a non-developer writing the change description, and check that
-   every referenced Requirement and Guardrail (Section 3.6) was honored.
-2. **Repeat the build-from-spec test at larger scope.** Section 8's two
-   independent implementations from one record cover a small metamodel
-   engine. The open question is where the record's precision runs out
-   as the Component grows — and whether the divergences Section 8.2
-   found (physical schema, payload shape, transport) can be closed by
-   record fields alone.
-3. **Round-trip test full reconstruction of an existing system —
-   optional, secondary.** Have an LLM produce a Contour record from a
-   real system's source; then regenerate the code from *only* that
-   record and compare the regenerated behavior against the original.
-   Worth trying because the model happens to support it, but not a
-   precondition for anything else here.
-4. **Prototype the composed System landscape.** A System has a notation
-   (Section 4) but no *composed* view: several Component diagrams
-   assembled into one landscape of the System they belong to, without
-   violating the one-page constraint at the individual level. That view
-   is what would show whether a System needs properties beyond a name
-   and a description — ownership, a lifecycle of its own, cross-Component
-   requirements — or whether grouping is all it ever needs to be.
-5. **Render the diagram tier from the serialization.** A YAML
-   serialization of the seven elements and the record fields now exists
-   (Section 8); rendering the diagrams from it automatically, rather than
-   drawing them by hand, is the missing half.
-6. **Apply Contour to a real legacy system** with little or no existing
-   documentation, to see where the element vocabulary or the record-level
-   detail strains against undocumented complexity — including cases
-   where a "legacy system" turns out, once modeled, to be several
-   Components already.
-
----
-
-## 8. Preliminary Experiment Results
-
-Two experiments have been run against the paper's two primary claims.
-Both used `contour-engine`, a Java/Spring Boot implementation of the
-Contour metamodel itself, built from a YAML record (`contour.yaml`) in
-the shape sketched in Section 3.3 and served through a REST API and an
-MCP server. The record carries one Requirement and three Guardrails that
-the results below refer to:
-
-- Requirement **Uses full-text search** — search over the record must be
-  backed by a real full-text index, not a scan.
-- Guardrail **Read-only function** — the search Function must not modify
-  any Data Object.
-- Guardrail **Proper field indexes** — the fields the search Requirement
-  names must be indexed.
-- Guardrail **Interfaces Share One Core** — the REST and MCP Interfaces
-  expose the same Functions through one service layer; neither may
-  implement behavior of its own.
-
-The experiments:
-
-- **Experiment 1 — build from spec: two independent implementations from
-  one record.** This tests the second claim (a new Component can be
-  built from the record as a spec). `contour-engine` (Java) and
-  `contour-engine-py` (Python/FastAPI), built by different sessions from
-  nothing but the same byte-identical `contour.yaml`, were run
-  simultaneously against one shared database and cross-called against
-  each other's data.
-- **Experiment 2 — change propagation into existing code.** This tests
-  the first claim. A plain-language change ("also search Requirements
-  and Guardrails, not just Elements") was routed record-first: the agent
-  read the existing Requirement and Guardrails via the MCP server before
-  touching any code, amended the Requirement (v1 → v2), then conformed
-  the Java implementation to it, rebuilt, and confirmed the change
-  behaviorally against the live database. A second, self-correcting pass
-  (v2 → v3) used the first pass's own findings to redesign the record —
-  splitting one search Function into three scoped ones — and
-  re-propagated that into code.
-
-Both experiments are documented in full in `EXPERIMENT-REPORT.md` and
-`EXPERIMENT-REPORT-CHANGE-PROPAGATION.md`; this section summarizes what they
-show for the paper's claims.
-
-### 8.1 What proves the approach
-
-- **A record propagates a described change correctly into existing code.**
-  The first claim held on both passes of Experiment 2: each record
-  amendment was implemented, rebuilt against an already-populated
-  database with a clean migration, and passed a live behavioral
-  acceptance test — without the developer ever pointing at a file.
-- **A record builds independent implementations that agree on core
-  semantics.** The second claim held in Experiment 1: given nothing but
-  the same record, the Java and Python engines derived the same table
-  shape, ownership rules, relationship semantics, versioning, and
-  delete-cascade behavior. An element created by one was fully readable,
-  linkable, and deletable by the other; cross-ownership and
-  required-field validation rejected the same inputs on both, with the
-  same HTTP status.
-- **Requirements and Guardrails behaved as enforceable obligations, not
-  prose.** The Read-only function and Proper field indexes Guardrails
-  held through both iterations of Experiment 2, checked by direct
-  assertion, and the Uses full-text search Requirement's version history
-  (v1 → v2 → v3) stands as a legible, auditable record of what the
-  capability was asked to do and why.
-- **Record-first is the workflow an agent reaches for naturally, not one
-  that has to be imposed.** In Experiment 2 the agent read the record before
-  the code and amended the record before touching the code, unprompted —
-  consistent with principles 6 and 8.
-- **Interfaces Share One Core held in practice.** Adding two new search
-  Functions required no change to the pre-existing REST endpoint at all —
-  one service-layer change updated both the REST and MCP surfaces
-  together, as the Guardrail intends.
-
-### 8.2 What challenges the approach
-
-- **The record specifies logical content, not physical shape — and the gap
-  produced a real, reproducible failure.** The one outright crash observed
-  across both experiments came from this: the record requires full-text
-  search to exist and be indexed, but not how, so the two implementations
-  in Experiment 1 built schema-incompatible physical indexes (a functional
-  index over the whole record body vs. a generated column over named
-  fields) — one engine's search then failed with a 500 against the
-  other's schema.
-- **A naming convention stated in prose doesn't have one algorithmic
-  reading.** "Event names are past tense" (Section 3.5) is a convention, not
-  a defined test; the two implementations in Experiment 1 chose different
-  irregular-verb lists and accepted or rejected the identical input (`"Data
-  Given"`) differently. Enforced as a hard validation rule, a rule stated
-  only in natural language will diverge across implementations.
-- **A derived obligation between a Requirement and a Guardrail isn't visible
-  as a dependency.** In Experiment 2, Proper field indexes was only
-  correct once Uses full-text search defined which fields were in scope;
-  widening the Requirement silently reopened the Guardrail, and nothing in
-  the record structure flagged that coupling — the agent had to infer it to
-  avoid leaving the Guardrail quietly violated.
-- **The record leaves response shape undecided when a change spans more than
-  one kind of thing.** Extending search to cover Requirements and Guardrails
-  as well as Elements (Experiment 2, first pass) forced an undocumented
-  design choice — a discriminated result union vs. separate per-kind
-  results — that a second agent could reasonably resolve differently and
-  still be fully record-compliant, while producing wire-incompatible output.
-  It took a deliberate second record change (splitting into three scoped
-  search Functions) to remove the ambiguity; the original record didn't rule
-  it out.
-- **Section 4's shapes were read differently by each engine.** The two
-  engines in Experiment 1 rendered the same diagram content (same nodes,
-  same edges) with different shapes and layout conventions. Section 4 now
-  states that shapes are recommended rather than normative.
-- **Validation payload shape and interface transport are unconstrained by
-  the record.** Both engines in Experiment 1 returned the same HTTP status on
-  invalid input but different violation-payload shapes, and chose
-  incompatible MCP transports (SSE vs. stdio) — less a record ambiguity than
-  a silent gap in what Interfaces Share One Core is meant to guarantee:
-  drop-in interchangeability, or only consistent logical behavior.
-- **Tooling: wholesale edge-list replacement makes small record changes
-  risky.** In `contour-engine`, a relationship is only editable by
-  replacing its owning element's full outgoing edge list, so adding two
-  edges in Experiment 2 meant re-submitting 24- and 11-edge lists in
-  full. A tooling gap rather than a metamodel gap, but it bears on how
-  safely a record can be evolved.
-
-### 8.3 Net read
-
-Both primary claims held, on one small codebase: a readable Contour
-record was sufficient to drive a described change into existing code,
-and to build two independent implementations that agree on core behavior
-— ownership, relationships, versioning, validation outcomes, and cascade
-semantics — with no core-metamodel violation in either experiment. Every
-divergence found sits in the tier the record leaves underspecified by
-design: physical schema, a prose naming heuristic, payload and transport
-shape, and diagram cosmetics. The practical implication is about
-precision rather than the metamodel: where the record states an
-obligation but not its physical or algorithmic realization, two
-compliant implementations can and will diverge — and neither the
-two-view structure (Section 3.2) nor the Requirement/Guardrail layer
-(Section 3.6) yet distinguishes "must behave the same" from "must be
-built the same way underneath."
-
----
-
-## 9. Conclusion
+## 7. Conclusion
 
 Contour is an attempt to answer a narrow but demanding question: can a
 software system's *logical boundary* — its functionality, the data it
@@ -933,14 +790,23 @@ correctly, or a new Component built correctly from the record as a spec?
 The framework keeps its diagram small on purpose (seven elements, two
 zoom levels, one page per diagram) and pushes the completeness that
 guiding a change correctly demands into a structured record underneath
-each element. A first experiment (Section 8) says the split holds at the
-level of core behavior, and that what the record still leaves open is
-physical and algorithmic realization rather than logical content.
+each element. Three preliminary experiments (documented in
+[`contour-experiments.md`](contour-experiments.md)), one of them on a
+real legacy subsystem, say the split holds for structure and boundary.
+They say it holds for behavior only on small codebases. On real legacy
+logic, the record fixed the Component's shape reliably. Its prose did
+not carry conditional and time-dependent behavior precisely enough to
+build from without reading the source directly, and in one case it
+summarized that behavior wrongly. The other open decisions — what
+happens when a dependency fails, compatibility with consumers that
+already exist, and whether a record describes the current or the target
+system — look closable with conventions. How much branching behavior a
+record should carry is the harder question.
 Whether "enough detail to guide a change" and "small enough to stay
 usable" continue to coexist as the Component grows is what the next
-experiments (Section 7) are meant to find out; the harder, optional
-question of regenerating an existing system from its record alone comes
-after.
+experiments (the roadmap in `contour-experiments.md`) are meant to find
+out; the harder, optional question of regenerating an existing system
+from its record alone comes after.
 
 ---
 
@@ -1015,6 +881,37 @@ provide.
 
 ## Changelog
 
+- **v0.3** — Restructured into two documents. This paper now holds the
+  concept only: motivation, design principles, metamodel, notation,
+  worked example, limitations, and conclusion. Experiment results
+  (formerly Section 8) and next steps (formerly Section 7) moved,
+  unchanged in substance, to the new companion
+  `contour-experiments.md`, which carries the evidence per claim and
+  the roadmap and can grow without a new release of the paper. Section
+  6's bullets keep their claims but point at the companion for the
+  evidence; the abstract and conclusion reference it; the former
+  Section 9 (Conclusion) is now Section 7.
+- **v0.24** — Added Experiment 3 to Section 8: a build from spec of a new
+  Component from the record of a real, undocumented legacy subsystem,
+  including its second, source-verified pass (six behavioral defects the
+  first build missed), with a statement of the experiment's limits
+  (multi-source input, static rather than behavioral comparison with
+  the legacy system, single build). Section 8.1 gained its results: a
+  Requirement-derived test that caught a deviation (qualified by the
+  second pass), structure that carried over from the record, and
+  principles used as decision rules. Section 8.2 gained its challenges:
+  schema and identifier types, an existing consumer's contract, a
+  mechanism mis-guessed by a derived document, failure policy, an unmet
+  Requirement, current versus target, the limit of record-derived tests,
+  places where the record was wrong rather than silent, conditional
+  control flow, and prose paraphrase of control flow. Section 8.3
+  rewritten across all three experiments, splitting the build-from-spec
+  result into structure (held) and detailed behavior (did not, on the
+  legacy subsystem). Section 6 gained three limitations (failure policy
+  on `uses`, current vs. target records, existing consumers); its
+  `steps`, compliance-grading, reconstruction, and evidence-base bullets
+  were updated. Section 7 items 2 and 6 updated, item 7 added. Abstract
+  and Section 9 updated.
 - **v0.23** — Consistency pass. Sections 7 and 9 updated to reflect the
   Section 8 results; build-from-spec claim given its own test item and
   mapped to Experiment 1. Defined the default one-page diagram (focal
