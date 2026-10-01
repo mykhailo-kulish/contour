@@ -71,22 +71,8 @@
       "$ref": "#/$defs/nameList",
       "description": "Names of Guardrail definitions this element must stay inside (Section 3.6)."
     },
-    "typeShape": {
-      "description": "A type in the core type notation (Section 3.3) — e.g. \"uuid\", \"string?\", \"Order.LineItem[1..]\", \"enum(pending, shipped)\", \"Order { id, status }\" — or an inline mapping of field names to such types.",
-      "oneOf": [
-        {
-          "type": "string",
-          "minLength": 1
-        },
-        {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {"$ref": "#/$defs/typeShape"}
-        }
-      ]
-    },
     "schemaField": {
-      "description": "The structured shape of a Data Object or Event (Section 3.3): an inline mapping of field names to types in the core type notation (Section 3.3), including nested types, or a string link to an existing spec (AsyncAPI/JSON Schema/Avro) rather than a re-authored duplicate.",
+      "description": "The structured shape of a Data Object or Event (Section 3.3): an inline mapping of field names to types in the core type notation — primitives, enum(...), T[], T[1..], T?, references to Data Objects, and nested types — or a string link to an existing spec (AsyncAPI/JSON Schema/Avro) rather than a re-authored duplicate.",
       "oneOf": [
         {
           "type": "string",
@@ -140,7 +126,7 @@
     "contractKey": {
       "type": "string",
       "minLength": 1,
-      "description": "A contract key: the name of an Actor, or the reserved key `Components` for Functions of other Components (Section 3.3)."
+      "description": "A contract key: the name of an Actor, or the reserved key `Components` for Functions of other Components (Section 3.3). That an Actor name refers to an existing Actor is checked outside JSON Schema."
     },
     "contract": {
       "type": "object",
@@ -171,63 +157,33 @@
       },
       "description": "The access a Component offers to one kind of caller (Section 3.3)."
     },
-    "outcomeKind": {
-      "enum": [
-        "not-found",
-        "invalid",
-        "conflict",
-        "denied"
-      ],
-      "description": "An abstract outcome kind (Section 3.3); each binding maps it to its own wire code."
-    },
-    "functionSchema": {
+    "functionContract": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "operation",
-        "response"
+        "callers",
+        "operation"
       ],
       "properties": {
+        "callers": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/contractKey"},
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Keys of the Component contracts this Function is reached through: Actor names, or `Components` (Section 3.3)."
+        },
         "operation": {
           "type": "object",
           "minProperties": 1,
-          "additionalProperties": {
+          "propertyNames": {
             "type": "string",
             "minLength": 1
           },
-          "description": "The operation per style, keyed by `binding.style` — exactly one entry per style among the Function's contracts. Value syntax is defined by that style's binding."
-        },
-        "request": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {"$ref": "#/$defs/typeShape"},
-          "description": "Logical input fields in the core type notation, the same in every style."
-        },
-        "response": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "success": {
-              "enum": [
-                "ok",
-                "created"
-              ],
-              "default": "ok"
-            },
-            "output": {
-              "$ref": "#/$defs/typeShape",
-              "description": "The success payload: a type, a Data Object, or a projection of one."
-            },
-            "outcomes": {
-              "type": "object",
-              "minProperties": 1,
-              "additionalProperties": {"$ref": "#/$defs/outcomeKind"},
-              "description": "Business outcome names a caller should see, each mapped to an outcome kind. An outcome is a failure of the operation, not a negative answer."
-            }
-          }
+          "additionalProperties": true,
+          "description": "The operation, once per style among the callers' contract bindings, keyed by `binding.style`. Each value is in that style's own format — e.g. an OpenAPI path and Operation Object, or a gRPC rpc definition — and is validated by the style's binding, not by this schema."
         }
       },
-      "description": "An external Function's contract shape (Section 3.3). Private Functions have no schema."
+      "description": "An external Function's contract (Section 3.3): who may call it, and the operation they call."
     },
     "system": {
       "type": "object",
@@ -326,14 +282,7 @@
         "description": {"$ref": "#/$defs/description"},
         "requirements": {"$ref": "#/$defs/requirements"},
         "guardrails": {"$ref": "#/$defs/guardrails"},
-        "contract": {
-          "type": "array",
-          "items": {"$ref": "#/$defs/contractKey"},
-          "minItems": 1,
-          "uniqueItems": true,
-          "description": "The contract keys of its own Component this Function is reached through (Section 3.3). Its presence makes the Function external."
-        },
-        "schema": {"$ref": "#/$defs/functionSchema"},
+        "contract": {"$ref": "#/$defs/functionContract"},
         "behavior": {
           "type": "string",
           "minLength": 1,
@@ -349,58 +298,30 @@
           "description": "Ordered list of the Function's own edges — `consumes` (first step only), calls, uses, reads, modifies, produces — the authoritative sequence the diagram's edges summarize (Section 3.3). A `uses` step never names a contract: the caller determines it."
         }
       },
-      "description": "A Function (Section 3). External when it lists `contract`, which then requires `schema`; private Functions have no schema. A Function started by an Event (`consumes` first step) lists no contract (check 6).",
-      "allOf": [
-        {
-          "if": {
-            "required": [
-              "contract"
-            ]
-          },
-          "then": {
-            "required": [
-              "schema"
-            ]
-          }
-        },
-        {
-          "if": {
-            "required": [
-              "schema"
-            ]
-          },
-          "then": {
-            "required": [
-              "contract"
-            ]
-          }
-        },
-        {
-          "if": {
-            "required": [
-              "steps"
-            ],
-            "properties": {
-              "steps": {
-                "prefixItems": [
-                  {
-                    "required": [
-                      "consumes"
-                    ]
-                  }
+      "description": "A Function (Section 3). External when it declares a `contract`; private otherwise. Functions have no `schema`. A Function started by an Event (`consumes` first step) has no contract (check 5).",
+      "if": {
+        "required": [
+          "steps"
+        ],
+        "properties": {
+          "steps": {
+            "prefixItems": [
+              {
+                "required": [
+                  "consumes"
                 ]
               }
-            }
-          },
-          "then": {
-            "not": {
-              "required": [
-                "contract"
-              ]
-            }
+            ]
           }
         }
-      ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "contract"
+          ]
+        }
+      }
     },
     "dataObject": {
       "type": "object",

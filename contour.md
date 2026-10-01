@@ -343,30 +343,28 @@ shape:
 - **`description`** — required. A plain-language sentence or two, same
   register as the name (Section 3.5) — what this element is, for a
   reader who isn't going to open the schema.
-- **`schema`** — the structured shape, where the element has one: a
-  Data Object's fields, an Event's payload, an external Function's
-  request and response. A Data Object's or Event's schema can be given
-  inline, or as a link to an existing schema artifact (an AsyncAPI
-  file, a JSON Schema, an Avro definition) rather than a re-authored
-  duplicate — for legacy systems in particular (Section 1), the schema
-  usually already exists somewhere; Contour can point at it instead of
-  restating it. An external Function's schema is always given in the
-  record (see *Contracts and external Functions* below). System,
-  Component, Actor, and private Functions have no `schema`.
+- **`schema`** — the structured shape of data: a Data Object's fields,
+  an Event's payload. It can be given inline, or as a link to an
+  existing schema artifact (an AsyncAPI file, a JSON Schema, an Avro
+  definition) rather than a re-authored duplicate — for legacy systems
+  in particular (Section 1), the schema usually already exists
+  somewhere; Contour can point at it instead of restating it. System,
+  Component, Actor, and Function have no `schema`.
 
-A private Function deliberately has no `schema` of its own: its data
-shape is already determined by its relations — the Data Objects it
-`reads`/`modifies` and any external Function it `uses` elsewhere. A
-separate schema would restate those and drift from them. An external
-Function is different: what it promises outside callers is not
-derivable from anything else in the model, so it carries a `schema`,
-and that schema is its contract.
+A Function deliberately has no `schema`: a private Function's data shape
+is already determined by its relations — the Data Objects it
+`reads`/`modifies` and any external Function it `uses` elsewhere — and
+a separate schema would restate those and drift from them. What an
+external Function promises outside callers is not derivable from
+anything else in the model, so it carries a `contract` instead: who may
+call it, and the operation they call (see *Contracts and external
+Functions* below).
 
 Any element may also carry `requirements` and `guardrails` (Section
 3.6); because they apply everywhere, the table lists them once rather
 than per element. Beyond that, a Function carries `behavior` and
 `steps` — the one place `description` alone leaves room to guess — and
-an external Function carries `contract` and `schema`:
+an external Function carries a `contract`:
 
 | Element | Property | Description |
 |---|---|---|
@@ -375,8 +373,7 @@ an external Function carries `contract` and `schema`:
 | **Function** | `description` | Plain-language summary of what the Function does |
 | | `behavior` | Prose account of business rules and side effects, precise enough that its logic isn't left for an LLM to invent |
 | | `steps` | Ordered list of the Function's own `consumes` (first step only)/`calls`/`uses`/`reads`/`modifies`/`produces` edges — the authoritative sequence the diagram's edges summarize |
-| | `contract` | External Functions only: the list of its Component's contract keys it is reached through — Actors, or `Components`. Its presence is what makes the Function external |
-| | `schema` | External Functions only: `operation` per style, `request`, and `response` (output and named outcomes) — see below |
+| | `contract` | External Functions only: `callers`, the Component contract keys it is reached through (Actors, or `Components`), and `operation`, its description in each style's own format — see below. Its presence is what makes the Function external |
 | **Data Object** | `description` | Plain-language summary of what this data represents |
 | | `schema` | Fields and nested types, in the core type notation (below) |
 | **Event** | `description` | Plain-language summary of what happened |
@@ -449,10 +446,9 @@ revisiting only if the experiments show plain sequence isn't enough
 
 #### Core type notation
 
-Every `schema` in a record — a Data Object's fields, an Event's payload,
-an external Function's request and output — uses one small notation, so
-that a shape means the same thing wherever it appears and whatever
-technology later carries it:
+Every `schema` in a record — a Data Object's fields, an Event's payload —
+uses one small notation, so that a shape means the same thing wherever
+it appears and whatever technology later carries it:
 
 | Notation | Meaning |
 |---|---|
@@ -462,11 +458,12 @@ technology later carries it:
 | `T?` | Optional; every field without `?` is required |
 | `Order` | A reference to a Data Object |
 | `Order.LineItem` | A type nested in a Data Object's schema — defined once, in its owner (principle 4) |
-| `Order { id, status }` | A projection: only the named fields of a Data Object |
 
 How each type is represented on the wire — whether a `decimal` is a JSON
 number or a string, what a `uuid` becomes in protobuf — is not part of
-the notation; it is defined by the binding (below).
+the notation; it is defined by the binding (below). The same binding
+defines how an operation (below) refers to a Data Object, so that the
+shape of what an operation sends or returns still has one home.
 
 #### Contracts and external Functions
 
@@ -495,66 +492,48 @@ Contracts are record-tier, like Requirements and Guardrails: Contour has
 no separate element for them and never draws them, and the vocabulary
 stays at six elements.
 
-A Function becomes external by listing one or more of its Component's
-contract keys in its own `contract` field. There is no limit on how
-many, but one invariant holds: **a Function has one `schema` and one
-`behavior`, whichever contract it is reached through.** Listing several
-keys asserts the operation has the same shape and the same business
-rules for every caller. When the shape or the rules differ — a customer
-may cancel only before shipment, support staff at any stage but with a
-reason — that is two business decisions, and so two Functions, by the
-rule in Section 3.6 that a business decision belongs to the Function
-that owns it. Logic they genuinely share goes in a private Function both
-`call`.
+A Function becomes external by declaring a **`contract`** of its own,
+with two parts:
+
+- **`callers`** — the keys of its Component's contracts it is reached
+  through: Actors, or `Components`. There is no limit on how many.
+- **`operation`** — the operation those callers invoke, given **once per
+  style** among those contracts' bindings, each in *that style's own
+  format*: for OpenAPI, the path and method with their Operation Object;
+  for gRPC, the `rpc` definition and its messages. Contour defines the
+  slot — one entry per style, keyed by the style's name — and leaves the
+  format of each entry to that style's binding. An existing spec's
+  operation can therefore be pasted in as it is, rather than restated in
+  a Contour-specific notation.
+
+One invariant holds whatever the number of callers: **a Function has one
+operation shape and one `behavior`, whichever contract it is reached
+through.** Listing several callers asserts the operation has the same
+shape and the same business rules for every one of them. When the shape
+or the rules differ — a customer may cancel only before shipment,
+support staff at any stage but with a reason — that is two business
+decisions, and so two Functions, by the rule in Section 3.6 that a
+business decision belongs to the Function that owns it. Logic they
+genuinely share goes in a private Function both `call`. When the callers
+span two styles, the Function carries two `operation` entries, and
+keeping them describing the same shape is a check its bindings must
+make.
 
 **Which contract a `uses` goes through is never declared; it follows
 from the caller.** An Actor reaches a Function through the contract keyed
 by that Actor; a Function of another Component reaches it through
-`Components`. The target must list that key. The same rule lets an
-Actor be drawn once, as a single `uses` edge to the Component (Section
-3.2): the Actor reaches every Function that lists it. Drawing
-Function-level edges from an Actor is only needed to show narrower
-reach.
-
-An external Function's `schema` has three parts:
-
-- **`operation`** — the one style-specific line, keyed by style, with
-  exactly one entry per `binding.style` among the Function's contracts:
-  `{ OpenAPI: GET /{id}, gRPC: GetOrder }`. What a valid value looks
-  like is defined by that style's binding.
-- **`request`** — the logical input fields, in the core type notation,
-  the same in every style.
-- **`response`** — `output`, the success payload (a type, a Data Object
-  or a projection of one); `success`, which is `ok` unless the Function
-  says `created`; and `outcomes`, each a business name the caller should
-  see, mapped to one of a small fixed set of **outcome kinds**:
-
-| Kind | Meaning |
-|---|---|
-| `ok` | succeeded, returns the output |
-| `created` | succeeded, a new resource exists |
-| `not-found` | the target doesn't exist, or the caller may not know it does |
-| `invalid` | the request is malformed or breaks a rule on its input |
-| `conflict` | the request is valid, but the current state forbids it |
-| `denied` | the caller is known but not allowed |
-
-Each binding maps the kinds to its own wire codes — `conflict` to an
-HTTP 409 or a gRPC `FAILED_PRECONDITION` — and carries the business
-name with them, so a caller sees "Already Shipped," not just "409." Two
-boundaries keep the list short. Authentication failures never appear on
-a Function: they belong to the contract's `binding`. And an outcome is a
-*failure* of the operation, not a negative answer: "Is it in stock?"
-answered "no" is a successful `output`, not an outcome. A rule already
-expressed in the type notation needs no outcome either: a request
-missing a required field, or with an empty `T[1..]` list, is `invalid`
-by the binding's own handling.
+`Components`. The target must list that key among its `callers`. The
+same rule lets an Actor be drawn once, as a single `uses` edge to the
+Component (Section 3.2): the Actor reaches every Function that lists it.
+Drawing Function-level edges from an Actor is only needed to show
+narrower reach.
 
 ```yaml
 Component: Order Service
   contract:
     Customer:
       description: Customers placing, tracking and cancelling their own orders.
-      binding: { style: OpenAPI, base: /v1/orders, auth: customer token, errors: RFC 7807 }
+      binding: { style: OpenAPI, base: /v1/orders, auth: customer token }
       guardrails: [Own Orders Only]
     Components:
       description: Other Components reading orders.
@@ -562,20 +541,18 @@ Component: Order Service
 
 Function: Fetch Order
   description: Returns a single order.
-  contract: [Customer, Components]
-  schema:
-    operation: { OpenAPI: GET /{id}, gRPC: GetOrder }
-    request:   { id: uuid }
-    response:
-      output: Order
-      outcomes: { Not Found: not-found }
+  contract:
+    callers: [Customer, Components]
+    operation:
+      OpenAPI: …   # an OpenAPI path, method and Operation Object
+      gRPC: …      # an rpc definition and its messages
   steps:
     - reads: Order
 ```
 
-The keys after `style` in each `binding` above are illustrative: they
-are what an OpenAPI and a gRPC binding might define, not part of
-Contour.
+The keys after `style` in each `binding`, and the content of each
+`operation` entry, belong to the style's binding, not to Contour;
+Section 5 shows both filled in.
 
 #### Bindings
 
@@ -589,43 +566,47 @@ generate from. A binding must define:
 1. **Binding keys** — which keys the `binding` block accepts besides
    `style`, and their allowed values (including how authentication is
    structured).
-2. **Operation syntax** — what a valid `operation` value is, and how it
-   combines with the binding keys into a full address.
-3. **Request placement** — where each request field travels: path,
-   query, body, header, or message field.
-4. **Type mapping** — how each core type is represented in the style.
-5. **Outcome mapping** — how each outcome kind becomes a wire code, and
-   how the outcome's business name travels with it.
-6. **Defaults** — what applies when a binding key is omitted.
-7. **Artifact** — which spec the binding generates from the record, or
-   checks it against, and any style-specific checks.
+2. **Operation format** — what a Function's `operation` entry for the
+   style contains, and how it combines with the binding keys into a full
+   address.
+3. **Data Object references** — how an operation refers to a Data Object
+   or a nested type, and how each core type is represented in the style.
+4. **Defaults** — what applies when a binding key is omitted.
+5. **Artifact** — which spec the binding assembles from the record, or
+   checks it against.
+6. **Checks** — the style-specific consistency checks, including, for a
+   Function whose callers span several styles, that its operations
+   describe the same shape.
 
 **The record is the authority; a contract spec is an output.** An
-OpenAPI, AsyncAPI or protobuf file for a contract is generated from the
-record by its binding, or checked against it, the same way code is.
-Unlike a Data Object's schema, a contract spec is never linked as the
-source of truth: one spec file spans many Functions, so linking it would
-give every Function's shape two homes that can disagree. An existing
-spec from a legacy system is an *import source* for the record, not a
+OpenAPI, AsyncAPI or protobuf file for a contract is assembled from the
+record — the Component's binding keys, its Functions' operations, the
+Data Objects they refer to — or checked against it, the same way code
+is. Unlike a Data Object's schema, a contract spec is never linked as
+the source of truth: one spec file spans many Functions, so linking it
+would give every Function's shape two homes that can disagree. An
+existing spec from a legacy system is an *import source* for the record
+— its operations are pasted into the Functions that perform them — not a
 reference from it. Drift between record and spec is then the same
 problem as drift between record and code, and is checked the same way
 (Section 3.6).
 
-Because contracts and schemas are structured, their consistency is
-mechanically checkable rather than a matter of judgement. The core
-checks are style-neutral; each binding adds its own:
+Because contracts are structured, their consistency is mechanically
+checkable rather than a matter of judgement. The core checks are
+style-neutral; each binding adds its own:
 
 1. Every contract key is an existing Actor or `Components`, and every
-   key in a Function's `contract` exists on its own Component.
-2. A Function's `operation` has exactly one entry per `binding.style`
-   among its contracts.
-3. No two Functions resolve to the same operation on the same contract.
-4. Every outcome uses a defined outcome kind.
-5. Every `uses` targets a Function that lists the caller's key — the
-   calling Actor, or `Components` for a calling Function.
-6. A `consumes` step appears only first and at most once, names an Event
+   name in a Function's `contract.callers` is a key on its own
+   Component.
+2. A Function's `contract.operation` has exactly one entry per
+   `binding.style` among its callers' contracts.
+3. No two Functions resolve to the same operation for the same caller.
+4. Every `uses` targets a Function whose `contract.callers` includes the
+   caller's key — the calling Actor, or `Components` for a calling
+   Function.
+5. A `consumes` step appears only first and at most once, names an Event
    produced by another Component, and appears only in a Function that
-   lists no contract — a Function is started by an Event or by a
+   has no `contract` — a Function is started by an Event or by a
    caller, not both.
 
 ### 3.4 Event-Driven Causal Chains
@@ -704,7 +685,7 @@ stylistic afterthought:
   the technical means used to do it, the class it happens to map to, or
   the protocol it runs over. Protocol and transport belong to a
   contract's `binding`, and an operation or method name
-  (`GetOrder`) to the Function's `schema` — never in the Function's
+  (`GetOrder`) to the Function's `contract.operation` — never in the Function's
   name. Principle 7 applied to naming.
 - **A Function split by audience says whose action it is.** When one
   piece of work becomes two Functions because its rules differ per
@@ -900,8 +881,10 @@ Deployment nodes, infrastructure, and organizational elements are absent
 by design (principle 5).
 
 **The records behind the diagram.** The keys after `style` in each
-`binding` are illustrative — what an OpenAPI or gRPC binding might
-define (Section 3.3):
+`binding`, and the content of each `operation`, are illustrative — what
+an OpenAPI or gRPC binding might define (Section 3.3). Each `operation`
+is written as it would appear in that style's own spec, so an existing
+spec's operation can be pasted in unchanged:
 
 ```yaml
 Actor: Customer
@@ -926,14 +909,36 @@ Component: Order Service
 
 Function: Place Order
   description: Accepts a new order request, validates it, and creates it.
-  contract: [Customer]
-  schema:
-    operation: { OpenAPI: POST / }
-    request:   { items: Order.LineItem[1..] }
-    response:
-      success: created
-      output: Order
-      outcomes: { Out Of Stock: conflict }
+  contract:
+    callers: [Customer]
+    operation:
+      OpenAPI:
+        /:
+          post:
+            operationId: placeOrder
+            requestBody:
+              required: true
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        minItems: 1
+                        items: { $ref: '#/components/schemas/Order.LineItem' }
+            responses:
+              '201':
+                description: The order was accepted and is pending.
+                content:
+                  application/json:
+                    schema: { $ref: '#/components/schemas/Order' }
+              '409':
+                description: Out of stock — at least one item can't be supplied.
+                content:
+                  application/problem+json:
+                    schema: { $ref: '#/components/schemas/Problem' }
   behavior: >
     Validates stock via Validate Order and rejects the order if any item
     is short. On success, computes the total, persists an Order with
@@ -947,26 +952,60 @@ Function: Place Order
 
 Function: Fetch Order
   description: Returns a single order.
-  contract: [Customer, Support Staff, Components]
-  schema:
-    operation: { OpenAPI: GET /{id}, gRPC: GetOrder }
-    request:   { id: uuid }
-    response:
-      output: Order
-      outcomes: { Not Found: not-found }
+  contract:
+    callers: [Customer, Support Staff, Components]
+    operation:
+      OpenAPI:
+        /{id}:
+          get:
+            operationId: fetchOrder
+            parameters:
+              - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+            responses:
+              '200':
+                description: The order as stored.
+                content:
+                  application/json:
+                    schema: { $ref: '#/components/schemas/Order' }
+              '404':
+                description: No such order, or not visible to this caller.
+                content:
+                  application/problem+json:
+                    schema: { $ref: '#/components/schemas/Problem' }
+      gRPC: |
+        rpc GetOrder(GetOrderRequest) returns (Order);
+        message GetOrderRequest { string id = 1; }
   behavior: Returns the order as stored.
   steps:
     - reads: Order
 
 Function: Cancel Own Order
   description: Lets a customer cancel an order that hasn't shipped.
-  contract: [Customer]
-  schema:
-    operation: { OpenAPI: POST /{id}/cancel }
-    request:   { id: uuid }
-    response:
-      output: Order
-      outcomes: { Not Found: not-found, Already Shipped: conflict, Already Cancelled: conflict }
+  contract:
+    callers: [Customer]
+    operation:
+      OpenAPI:
+        /{id}/cancel:
+          post:
+            operationId: cancelOwnOrder
+            parameters:
+              - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+            responses:
+              '200':
+                description: The order is now cancelled.
+                content:
+                  application/json:
+                    schema: { $ref: '#/components/schemas/Order' }
+              '404':
+                description: No such order among the customer's own.
+                content:
+                  application/problem+json:
+                    schema: { $ref: '#/components/schemas/Problem' }
+              '409':
+                description: Already shipped, or already cancelled.
+                content:
+                  application/problem+json:
+                    schema: { $ref: '#/components/schemas/Problem' }
   behavior: >
     Allowed only while status is pending or confirmed. Sets status to
     cancelled and emits Order Cancelled.
@@ -977,13 +1016,40 @@ Function: Cancel Own Order
 
 Function: Cancel Order for Customer
   description: Lets support staff cancel any order, with a reason.
-  contract: [Support Staff]
-  schema:
-    operation: { OpenAPI: POST /{id}/cancel }
-    request:   { id: uuid, reason: string }
-    response:
-      output: Order
-      outcomes: { Not Found: not-found, Already Cancelled: conflict }
+  contract:
+    callers: [Support Staff]
+    operation:
+      OpenAPI:
+        /{id}/cancel:
+          post:
+            operationId: cancelOrderForCustomer
+            parameters:
+              - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+            requestBody:
+              required: true
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    required: [reason]
+                    properties:
+                      reason: { type: string, minLength: 1, maxLength: 500 }
+            responses:
+              '200':
+                description: The order is now cancelled.
+                content:
+                  application/json:
+                    schema: { $ref: '#/components/schemas/Order' }
+              '404':
+                description: No such order.
+                content:
+                  application/problem+json:
+                    schema: { $ref: '#/components/schemas/Problem' }
+              '409':
+                description: Already cancelled.
+                content:
+                  application/problem+json:
+                    schema: { $ref: '#/components/schemas/Problem' }
   behavior: >
     Allowed at any status except cancelled. The reason is stored on the
     Order. Sets status to cancelled and emits Order Cancelled.
@@ -1018,7 +1084,9 @@ Event: Order Placed
 
 Event: Order Cancelled
   description: An order was cancelled, by its customer or by support staff.
-  schema: { orderId: uuid, reason: string? }
+  schema:
+    orderId: uuid
+    reason: string?
 
 Guardrail: Own Orders Only
   description: >
@@ -1027,13 +1095,17 @@ Guardrail: Own Orders Only
     as Not Found, so their existence isn't revealed.
 ```
 
-The type notation carries rules that would otherwise need outcomes:
-`Order.LineItem[1..]` makes "at least one item" structural, and `reason:
-string`, having no `?`, is required — so neither Function declares an
-"empty order" or "reason missing" outcome; the binding reports both as
-`invalid`. The two cancel Functions share `POST /{id}/cancel` without
-colliding, because they sit on different contracts with different bases
-(check 3 in Section 3.3).
+The operations refer to data the way their own spec would —
+`#/components/schemas/Order` in OpenAPI, the `Order` message in gRPC —
+and in both cases the reference resolves to the `Order` Data Object:
+the bindings place Data Objects and their nested types in the assembled
+spec, so the shape of an order still has one home (principle 4).
+`Problem` comes from the Customer and Support Staff bindings' `errors:
+RFC 7807` key, not from any Function. `Fetch Order` carries two
+operations because its callers span two styles; that both describe the
+same lookup is a check the bindings make. The two cancel Functions share
+`/{id}/cancel` without colliding, because they sit on different
+contracts with different bases (check 3 in Section 3.3).
 
 **Drilling into an Actor edge:** `Support Staff → Order Service`
 summarizes Function-level edges that are derived from the record, not
@@ -1070,12 +1142,13 @@ graph LR
 ```yaml
 Function: Check Stock          # on Inventory Service, whose Components contract is gRPC
   description: Reports whether requested quantities are available.
-  contract: [Components]
-  schema:
-    operation: { gRPC: CheckStock }
-    request:   { items: Order.LineItem[1..] }
-    response:
-      output: { available: boolean, shortItems: Order.LineItem[] }
+  contract:
+    callers: [Components]
+    operation:
+      gRPC: |
+        rpc CheckStock(CheckStockRequest) returns (CheckStockResponse);
+        message CheckStockRequest  { repeated LineItem items = 1; }
+        message CheckStockResponse { bool available = 1; repeated LineItem short_items = 2; }
   steps:
     - reads: Stock
 ```
@@ -1085,8 +1158,9 @@ actually drives the dependency, not the Component as a whole. It names
 no contract: as a Function of another Component, it can only go through
 Inventory's `Components` contract, which `Check Stock` lists. That
 precision is optional: the diagram above stands on its own without it.
-`Check Stock` declares no outcomes: an order that can't be filled is a
-successful answer to "is it available?", not a failure of the operation.
+`Check Stock` reports short stock in its response, not as an error: an
+order that can't be filled is a successful answer to "is it
+available?", not a failure of the operation.
 
 **Drilling into the event:** the same optional precision applies to
 `Order Placed`. At Context level, Order Service `produces` it and
@@ -1128,9 +1202,8 @@ the evidence in [`contour-experiments.md`](contour-experiments.md)
   Requirements with their conditions spelled out, is now a live
   question.
 - **One Function, one shape and one set of rules.** A Function reached
-  through several contracts must offer the same request, response and
-  behavior through each; only the operation name varies by style
-  (Section 3.3). A capability whose shape or rules differ per audience
+  through several contracts must offer the same operation shape and the
+  same behavior through each (Section 3.3). A capability whose shape or rules differ per audience
   becomes several Functions, which a business reader may find redundant
   on the diagram, and naming them well takes effort. The rule is also
   easy to break silently: a modeler can list several contracts and hide
@@ -1153,10 +1226,15 @@ the evidence in [`contour-experiments.md`](contour-experiments.md)
   bindings that exist outside this paper and are not yet written. Some
   styles sit uneasily in the model: RMI's operation is a method
   signature, which brings the record close to code.
-- **The outcome-kind list is untested beyond two styles.** The six
-  kinds map cleanly onto HTTP status codes and gRPC status codes.
-  Whether they cover every failure a real contract needs — rate
-  limiting, timeouts reported as outcomes, partial success — is open.
+- **Operations are written in each style's own format.** That lets an
+  existing spec's operations be pasted into a record unchanged, but it
+  also means a Function's operation is only as readable as its style:
+  an OpenAPI fragment is precise for a developer or an LLM and opaque to
+  a non-developer, who has to rely on the Function's `description` and
+  `behavior`. And when a Function's callers span two styles, its two
+  operations restate one shape twice; Contour leaves it to the bindings
+  to check they agree, so that check is only as strong as the bindings
+  that implement it.
 - **Events are outside the contract model.** A Component's Events still
   carry their own `schema` and name no contract, so how a Component
   publishes them (transport, envelope) has no structured home yet, and
@@ -1199,7 +1277,8 @@ the evidence in [`contour-experiments.md`](contour-experiments.md)
 - **No failure policy on a `uses` edge.** A `uses` relation says that a
   Function depends on another Component's external Function. It does
   not say what the using Function does when that call fails outright —
-  as distinct from a declared outcome, which the `schema` now names. Experiment
+  as distinct from a declared failure response, which the target's
+  `contract.operation` now names. Experiment
   3 needed that decision for every integration client and had to infer
   it (Experiments §3). Whether it belongs in a Requirement or Guardrail
   on the using Function, or in the edge's own record, is open.
@@ -1210,7 +1289,8 @@ the evidence in [`contour-experiments.md`](contour-experiments.md)
   decomposition status of its dependencies had to be carried outside
   the metamodel (Experiments §3).
 - **Existing consumers aren't a first-class constraint.** An Event or
-  external Function whose `schema` is already bound to live consumers constrains
+  external Function whose `schema` or `contract.operation` is already
+  bound to live consumers constrains
   the Component's own choices, such as identifier type. Nothing in the
   record marks that constraint, so in Experiment 3 it surfaced only when
   a real consumer schema was checked (Experiments §3).
@@ -1339,44 +1419,47 @@ it, never the other way round (Section 3.3).
 
 - **v0.4** — Removed the Interface element and the `exposes` relation:
   six elements, eight relations. Externality is still derived, now from
-  a Function listing one of its Component's **contracts** — record-tier,
-  never drawn, and keyed by who they serve: an Actor, or the reserved
-  key `Components` for other Components' Functions, so a Component has
-  at most one contract per caller. Each contract has a `description` and
-  a `binding` block whose one core key, `style`, names the binding that
-  interprets the rest. Section 3.3 gained the core type notation
-  (primitives, `enum`, `T[]`, `T[1..]`, `T?`, references, nested types,
-  projections), the contract model, six abstract outcome kinds, a
+  a Function declaring a **contract** against its Component's contracts
+  — record-tier, never drawn, and keyed by who they serve: an Actor, or
+  the reserved key `Components` for other Components' Functions, so a
+  Component has at most one contract per caller. Each Component contract
+  has a `description` and a `binding` block whose one core key, `style`,
+  names the binding that interprets the rest. A Function's `contract`
+  holds `callers` (those keys) and `operation`, given once per style in
+  that style's own format — an OpenAPI path and Operation Object, a gRPC
+  `rpc` definition — so existing specs can be pasted in; the format is
+  defined by the style's binding, not by Contour. A Function keeps one
+  operation shape and one behavior across its callers; differing rules
+  per caller mean separate Functions. `schema` now belongs to Data
+  Objects and Events only. Section 3.3 gained the core type notation
+  for those schemas (primitives, `enum`, `T[]`, `T[1..]`, `T?`,
+  references, nested types), the contract model, a
   *Bindings* subsection listing what a binding — maintained outside the
-  paper — must define, and six style-neutral consistency checks.
-  External Functions gained `contract` (a list of keys) and `schema`
-  (`operation` keyed by style, logical `request`, `response` with an
-  output and named outcomes); private Functions still have no schema. A
-  Function may list several contracts but keeps one schema and one
-  behavior; differing rules per caller mean separate Functions. A
-  contract's spec (OpenAPI, AsyncAPI, protobuf) is now an output of the
-  record, never linked as its authority; Data Object and Event schemas
-  may still link existing specs. `uses` now targets an external Function
-  or, from an Actor, a Component; the contract it goes through is never
-  declared but follows from the caller. `consumes` is now allowed as a
-  Function's first step, marking it as subscribed to that Event; a
-  Function is started by an Event or by a caller, not both (check 6),
-  and 3.4's `Reserve Stock` now shows its record. Actor redefined as a role with
-  distinct access. `uses` now appears at both levels (3.1). Naming (3.5)
-  gained rules for Functions split by audience and for Actors as roles.
-  Notation (4): Interface lollipop removed; external Functions have a
-  heavy border and carry their contract keys; an Actor is drawn with one
-  unlabeled `uses` edge to the Component; containment may stand in for
-  `performs`. Section 5 rewritten around three contracts, a Function
-  reached through all three, a cancellation split by caller, and the
-  full records. Section 6: replaced "same function, differently-shaped
-  interfaces" with "one Function, one shape and one set of rules"; added
-  one-contract-per-caller, binding-precision, outcome-kind and
-  Events-outside-contracts limitations; updated failure-policy and
-  existing-consumers wording. Appendix: element and relation counts, an
-  Interface-concept row, the ArchiMate Contract overlap, the origin of
-  "binding", and the direction between record and contract specs.
-  Events are unchanged in this version.
+  paper — must define, and five style-neutral consistency checks. A
+  contract's spec (OpenAPI, AsyncAPI, protobuf) is now assembled from
+  the record, never linked as its authority; Data Object and Event
+  schemas may still link existing specs. `uses` now targets an external
+  Function or, from an Actor, a Component; the contract it goes through
+  is never declared but follows from the caller. `consumes` is now
+  allowed as a Function's first step, marking it as subscribed to that
+  Event; a Function is started by an Event or by a caller, not both
+  (check 5), and 3.4's `Reserve Stock` now shows its record. Actor
+  redefined as a role with distinct access. `uses` now appears at both
+  levels (3.1). Naming (3.5) gained rules for Functions split by
+  audience and for Actors as roles. Notation (4): Interface lollipop
+  removed; external Functions have a heavy border and carry their
+  callers; an Actor is drawn with one unlabeled `uses` edge to the
+  Component; containment may stand in for `performs`. Section 5
+  rewritten around three contracts, a Function reached through all three
+  and in two styles, a cancellation split by caller, and full records
+  with OpenAPI and gRPC operations. Section 6: replaced "same function,
+  differently-shaped interfaces" with "one Function, one shape and one
+  set of rules"; added one-contract-per-caller, binding-precision,
+  style-native-operations and Events-outside-contracts limitations;
+  updated failure-policy and existing-consumers wording. Appendix:
+  element and relation counts, an Interface-concept row, the ArchiMate
+  Contract overlap, the origin of "binding", and the direction between
+  record and contract specs. Events are unchanged in this version.
 - **v0.3** — Restructured into two documents. This paper now holds the
   concept only: motivation, design principles, metamodel, notation,
   worked example, limitations, and conclusion. Experiment results
