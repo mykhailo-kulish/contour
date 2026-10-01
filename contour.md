@@ -374,7 +374,7 @@ an external Function carries `contract` and `schema`:
 | | `guardrails` | Optional list of Guardrail names this element must stay inside (Section 3.6) |
 | **Function** | `description` | Plain-language summary of what the Function does |
 | | `behavior` | Prose account of business rules and side effects, precise enough that its logic isn't left for an LLM to invent |
-| | `steps` | Ordered list of the Function's own `calls`/`uses`/`reads`/`modifies`/`produces` edges — the authoritative sequence the diagram's edges summarize |
+| | `steps` | Ordered list of the Function's own `consumes` (first step only)/`calls`/`uses`/`reads`/`modifies`/`produces` edges — the authoritative sequence the diagram's edges summarize |
 | | `contract` | External Functions only: the list of its Component's contract keys it is reached through — Actors, or `Components`. Its presence is what makes the Function external |
 | | `schema` | External Functions only: `operation` per style, `request`, and `response` (output and named outcomes) — see below |
 | **Data Object** | `description` | Plain-language summary of what this data represents |
@@ -420,12 +420,22 @@ DataObject: Order
 ```
 
 `steps` is an ordered list, and each entry is one of the relationship
-verbs Section 3 already defines — `calls`, `uses`, `reads`, `modifies`,
-`produces` — so it adds no new relationship type. A `uses` step never
-names the contract it goes through: the caller determines it (see
-*Contracts and external Functions* below). `consumes` doesn't
-appear: it's what triggers a Function to run in the first place (Section
-3.4), not one of the steps it takes once running. What `steps` changes
+verbs Section 3 already defines — `consumes`, `calls`, `uses`, `reads`,
+`modifies`, `produces` — so it adds no new relationship type. A `uses`
+step never names the contract it goes through: the caller determines it
+(see *Contracts and external Functions* below).
+
+`consumes` is special: it may appear only as the **first** step, and at
+most once. It marks the Function as *subscribed* to that Event — the
+Event's arrival is what starts it, and the steps after it are how the
+Function processes it (Section 3.4). A Function therefore has one
+declared way of being started: by an Event, through its first step; by
+an outside caller, through a contract; or, with neither, only by
+another Function of its own Component through `calls`. A Function that
+must react to two Events is two Functions, which may share a private
+one through `calls`.
+
+What `steps` changes
 is which side is authoritative: the diagram's edges for those verbs are a
 **derived, unordered summary** of the Function's `steps` list — the same
 rollup as principle 5 (Context summarizes Functionality), applied one
@@ -613,6 +623,10 @@ checks are style-neutral; each binding adds its own:
 4. Every outcome uses a defined outcome kind.
 5. Every `uses` targets a Function that lists the caller's key — the
    calling Actor, or `Components` for a calling Function.
+6. A `consumes` step appears only first and at most once, names an Event
+   produced by another Component, and appears only in a Function that
+   lists no contract — a Function is started by an Event or by a
+   caller, not both.
 
 ### 3.4 Event-Driven Causal Chains
 
@@ -625,7 +639,18 @@ Event in turn. Because an Event marks a crossing *between* Components
 (principle 3), the consuming Function is always in a different Component
 from the producing one. The worked example (Section 5) has `Reserve
 Stock`, on Inventory Service, consuming an Event produced by Order
-Service:
+Service. Its record opens with the subscription:
+
+```yaml
+Function: Reserve Stock
+  description: Reserves stock for every item of a newly placed order.
+  steps:
+    - consumes: Order Placed
+    - modifies: Stock
+    - produces: Stock Reserved
+```
+
+As a shape:
 
 ```
 Event --consumed by--> Function --modifies--> Data Object
@@ -648,12 +673,12 @@ happens, which triggers that"):
 ```mermaid
 graph LR
     OrderPlaced{{Event: Order Placed}} -->|consumed by| ReserveStock[Function: Reserve Stock]
-    ReserveStock -->|modifies| Inventory[(Data Object: Inventory)]
+    ReserveStock -->|modifies| Stock[(Data Object: Stock)]
     ReserveStock -->|produces| StockReserved{{Event: Stock Reserved}}
 ```
 
 `modifies` is deliberately a plain edge, not a state machine: it says
-*that* `Reserve Stock` changes `Inventory`, not which field or which
+*that* `Reserve Stock` changes `Stock`, not which field or which
 state transition. A Data Object's structured record (Section 3.3) may
 optionally describe states and transitions — the worked `Order` schema
 already sketches a `status` enum — but the core metamodel stays at the
@@ -1323,7 +1348,7 @@ it, never the other way round (Section 3.3).
   (primitives, `enum`, `T[]`, `T[1..]`, `T?`, references, nested types,
   projections), the contract model, six abstract outcome kinds, a
   *Bindings* subsection listing what a binding — maintained outside the
-  paper — must define, and five style-neutral consistency checks.
+  paper — must define, and six style-neutral consistency checks.
   External Functions gained `contract` (a list of keys) and `schema`
   (`operation` keyed by style, logical `request`, `response` with an
   output and named outcomes); private Functions still have no schema. A
@@ -1333,7 +1358,10 @@ it, never the other way round (Section 3.3).
   record, never linked as its authority; Data Object and Event schemas
   may still link existing specs. `uses` now targets an external Function
   or, from an Actor, a Component; the contract it goes through is never
-  declared but follows from the caller. Actor redefined as a role with
+  declared but follows from the caller. `consumes` is now allowed as a
+  Function's first step, marking it as subscribed to that Event; a
+  Function is started by an Event or by a caller, not both (check 6),
+  and 3.4's `Reserve Stock` now shows its record. Actor redefined as a role with
   distinct access. `uses` now appears at both levels (3.1). Naming (3.5)
   gained rules for Functions split by audience and for Actors as roles.
   Notation (4): Interface lollipop removed; external Functions have a
