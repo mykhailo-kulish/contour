@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mykhailo-kulish.github.io/contour/contour.schema.json",
   "title": "Contour model",
-  "description": "A Contour specification in the framework's structured-record style (Section 3) with a nested ownership hierarchy: Components nest under their System (groups), and the elements a Component owns — functions, interfaces, dataObjects, events — nest under that Component. Actors are top-level (they sit outside the Component boundary). Requirement and Guardrail definitions (Section 3.6) are top-level and referenced by name. Ownership is expressed by nesting; cross-boundary edges (groups, exposes, uses, consumes, references, dependsOn) and Function steps are inline by name. No IDs. Field names are camelCase.",
+  "description": "A Contour specification in the framework's structured-record style (Section 3) with a nested ownership hierarchy: Components nest under their System (groups), and the elements a Component owns — functions, dataObjects, events — nest under that Component. A Component's contracts (Section 3.3) are keyed by the Actor they serve, or by the reserved key `Components`. Actors are top-level (they sit outside the Component boundary). Requirement and Guardrail definitions (Section 3.6) are top-level and referenced by name. Ownership is expressed by nesting; cross-boundary edges (groups, uses, consumes, references, dependsOn) and Function steps are inline by name. No IDs. Field names are camelCase.",
   "type": "object",
   "additionalProperties": false,
   "minProperties": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "Actor": {
-      "description": "An external role that uses the system through an Interface. Top-level because it sits outside the Component boundary. Given as a single element or a list.",
+      "description": "An external role with distinct access to the Components it uses (Section 3). Top-level because it sits outside the Component boundary. Which Components it uses is derived from the contracts keyed by its name. Given as a single element or a list.",
       "oneOf": [
         {"$ref": "#/$defs/actor"},
         {
@@ -71,8 +71,22 @@
       "$ref": "#/$defs/nameList",
       "description": "Names of Guardrail definitions this element must stay inside (Section 3.6)."
     },
+    "typeShape": {
+      "description": "A type in the core type notation (Section 3.3) — e.g. \"uuid\", \"string?\", \"Order.LineItem[1..]\", \"enum(pending, shipped)\", \"Order { id, status }\" — or an inline mapping of field names to such types.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/typeShape"}
+        }
+      ]
+    },
     "schemaField": {
-      "description": "The structured shape of an element that has one (Section 3.3): an inline mapping of field names to type descriptors, or a string link to an external spec (OpenAPI/AsyncAPI/JSON Schema/Avro) rather than a re-authored duplicate.",
+      "description": "The structured shape of a Data Object or Event (Section 3.3): an inline mapping of field names to types in the core type notation (Section 3.3), including nested types, or a string link to an existing spec (AsyncAPI/JSON Schema/Avro) rather than a re-authored duplicate.",
       "oneOf": [
         {
           "type": "string",
@@ -84,8 +98,28 @@
         }
       ]
     },
+    "firstStep": {
+      "description": "The first entry of a Function's steps list. Besides the ordinary step verbs it may be `consumes`, naming an Event produced by another Component — marking the Function as subscribed to that Event (Sections 3.3, 3.4).",
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "propertyNames": {
+        "enum": [
+          "consumes",
+          "calls",
+          "reads",
+          "modifies",
+          "produces",
+          "uses"
+        ]
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
     "step": {
-      "description": "One entry of a Function's ordered steps list (Section 3.3): a single-key mapping of a step verb to the name of the element it acts on. `consumes` is not a step — it is what triggers a Function (Section 3.4).",
+      "description": "One entry of a Function's ordered steps list (Section 3.3): a single-key mapping of a step verb to the name of the element it acts on. `consumes` is allowed only as the first step (see `firstStep`).",
       "type": "object",
       "minProperties": 1,
       "maxProperties": 1,
@@ -102,6 +136,98 @@
         "type": "string",
         "minLength": 1
       }
+    },
+    "contractKey": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A contract key: the name of an Actor, or the reserved key `Components` for Functions of other Components (Section 3.3)."
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "description",
+        "binding"
+      ],
+      "properties": {
+        "description": {"$ref": "#/$defs/description"},
+        "binding": {
+          "type": "object",
+          "required": [
+            "style"
+          ],
+          "properties": {
+            "style": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The style whose binding interprets every other key in this block (e.g. OpenAPI, gRPC, AsyncAPI)."
+            }
+          },
+          "additionalProperties": true,
+          "description": "The contract's technical side (Section 3.3). Contour defines only `style`; every other key is defined by that style's binding, outside the paper."
+        },
+        "requirements": {"$ref": "#/$defs/requirements"},
+        "guardrails": {"$ref": "#/$defs/guardrails"}
+      },
+      "description": "The access a Component offers to one kind of caller (Section 3.3)."
+    },
+    "outcomeKind": {
+      "enum": [
+        "not-found",
+        "invalid",
+        "conflict",
+        "denied"
+      ],
+      "description": "An abstract outcome kind (Section 3.3); each binding maps it to its own wire code."
+    },
+    "functionSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "response"
+      ],
+      "properties": {
+        "operation": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "The operation per style, keyed by `binding.style` — exactly one entry per style among the Function's contracts. Value syntax is defined by that style's binding."
+        },
+        "request": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/typeShape"},
+          "description": "Logical input fields in the core type notation, the same in every style."
+        },
+        "response": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "success": {
+              "enum": [
+                "ok",
+                "created"
+              ],
+              "default": "ok"
+            },
+            "output": {
+              "$ref": "#/$defs/typeShape",
+              "description": "The success payload: a type, a Data Object, or a projection of one."
+            },
+            "outcomes": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {"$ref": "#/$defs/outcomeKind"},
+              "description": "Business outcome names a caller should see, each mapped to an outcome kind. An outcome is a failure of the operation, not a negative answer."
+            }
+          }
+        }
+      },
+      "description": "An external Function's contract shape (Section 3.3). Private Functions have no schema."
     },
     "system": {
       "type": "object",
@@ -134,11 +260,7 @@
         "name": {"$ref": "#/$defs/name"},
         "description": {"$ref": "#/$defs/description"},
         "requirements": {"$ref": "#/$defs/requirements"},
-        "guardrails": {"$ref": "#/$defs/guardrails"},
-        "uses": {
-          "$ref": "#/$defs/nameList",
-          "description": "Names of the Interfaces this Actor uses."
-        }
+        "guardrails": {"$ref": "#/$defs/guardrails"}
       }
     },
     "component": {
@@ -153,17 +275,18 @@
         "description": {"$ref": "#/$defs/description"},
         "requirements": {"$ref": "#/$defs/requirements"},
         "guardrails": {"$ref": "#/$defs/guardrails"},
+        "contract": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {"$ref": "#/$defs/contractKey"},
+          "additionalProperties": {"$ref": "#/$defs/contract"},
+          "description": "The access this Component offers, keyed by who it is for: an Actor's name, or `Components` (Section 3.3). Keying makes 'one contract per caller' structural. That each key names an existing Actor is checked outside JSON Schema."
+        },
         "functions": {
           "type": "array",
           "items": {"$ref": "#/$defs/function"},
           "minItems": 1,
           "description": "The Functions this Component performs, nested (ownership by nesting)."
-        },
-        "interfaces": {
-          "type": "array",
-          "items": {"$ref": "#/$defs/interface"},
-          "minItems": 1,
-          "description": "The Interfaces this Component provides, nested."
         },
         "dataObjects": {
           "type": "array",
@@ -183,11 +306,11 @@
         },
         "consumes": {
           "$ref": "#/$defs/nameList",
-          "description": "Names of Events produced by another Component that this Component reacts to (Context-view summary)."
+          "description": "Names of Events produced by another Component that this Component reacts to — a Context-view summary of its Functions' `consumes` first steps (Section 3.4)."
         },
         "dependsOn": {
           "$ref": "#/$defs/nameList",
-          "description": "Names of Components this Component depends on (Context-view directed dependency)."
+          "description": "Names of Components this Component depends on — a Context-view summary of its Functions' `uses` steps (Section 3.2)."
         }
       }
     },
@@ -203,6 +326,14 @@
         "description": {"$ref": "#/$defs/description"},
         "requirements": {"$ref": "#/$defs/requirements"},
         "guardrails": {"$ref": "#/$defs/guardrails"},
+        "contract": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/contractKey"},
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "The contract keys of its own Component this Function is reached through (Section 3.3). Its presence makes the Function external."
+        },
+        "schema": {"$ref": "#/$defs/functionSchema"},
         "behavior": {
           "type": "string",
           "minLength": 1,
@@ -210,31 +341,66 @@
         },
         "steps": {
           "type": "array",
-          "items": {"$ref": "#/$defs/step"},
           "minItems": 1,
-          "description": "Ordered list of the Function's own calls/reads/modifies/produces/uses edges — the authoritative sequence the diagram's edges summarize (Section 3.3). A Function deliberately has no `schema` of its own."
+          "prefixItems": [
+            {"$ref": "#/$defs/firstStep"}
+          ],
+          "items": {"$ref": "#/$defs/step"},
+          "description": "Ordered list of the Function's own edges — `consumes` (first step only), calls, uses, reads, modifies, produces — the authoritative sequence the diagram's edges summarize (Section 3.3). A `uses` step never names a contract: the caller determines it."
         }
-      }
-    },
-    "interface": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "name",
-        "description",
-        "exposes"
-      ],
-      "properties": {
-        "name": {"$ref": "#/$defs/name"},
-        "description": {"$ref": "#/$defs/description"},
-        "requirements": {"$ref": "#/$defs/requirements"},
-        "guardrails": {"$ref": "#/$defs/guardrails"},
-        "schema": {"$ref": "#/$defs/schemaField"},
-        "exposes": {
-          "$ref": "#/$defs/nameList",
-          "description": "Names of the Functions this Interface exposes (its own Component's Functions only)."
+      },
+      "description": "A Function (Section 3). External when it lists `contract`, which then requires `schema`; private Functions have no schema. A Function started by an Event (`consumes` first step) lists no contract (check 6).",
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "contract"
+            ]
+          },
+          "then": {
+            "required": [
+              "schema"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "schema"
+            ]
+          },
+          "then": {
+            "required": [
+              "contract"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "steps"
+            ],
+            "properties": {
+              "steps": {
+                "prefixItems": [
+                  {
+                    "required": [
+                      "consumes"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "contract"
+              ]
+            }
+          }
         }
-      }
+      ]
     },
     "dataObject": {
       "type": "object",
