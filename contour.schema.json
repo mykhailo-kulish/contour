@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mykhailo-kulish.github.io/contour/contour.schema.json",
   "title": "Contour model",
-  "description": "A Contour specification in the framework's structured-record style (Section 3) with a nested ownership hierarchy: Components nest under their System (groups), and the elements a Component owns — functions, dataObjects, events — nest under that Component. A Component's contracts (Section 3.3) are keyed by the Actor they serve, or by the reserved key `Components`. Actors are top-level (they sit outside the Component boundary). Requirement and Guardrail definitions (Section 3.6) are top-level and referenced by name. Ownership is expressed by nesting; cross-boundary edges (groups, uses, consumes, references, dependsOn) and Function steps are inline by name. No IDs. Field names are camelCase.",
+  "description": "A Contour specification in the framework's structured-record style (Section 3) with a nested ownership hierarchy: Components nest under their System (groups), and the elements a Component owns — functions, dataObjects, events — nest under that Component. A Component's contracts (Section 3.3) are keyed by the Actor they serve, or by the reserved key `Components`, and list the Functions reachable through them with their call, request and responses. Actors are top-level. Requirement and Guardrail definitions (Section 3.6) are top-level and referenced by name. Cross-boundary edges (groups, uses, consumes, references, dependsOn) and Function steps are inline by name. No IDs. Field names are camelCase.",
   "type": "object",
   "additionalProperties": false,
   "minProperties": 1,
@@ -71,8 +71,8 @@
       "$ref": "#/$defs/nameList",
       "description": "Names of Guardrail definitions this element must stay inside (Section 3.6)."
     },
-    "schemaField": {
-      "description": "The structured shape of a Data Object or Event (Section 3.3): an inline mapping of field names to types in the core type notation — primitives, enum(...), T[], T[1..], T?, references to Data Objects, and nested types — or a string link to an existing spec (AsyncAPI/JSON Schema/Avro) rather than a re-authored duplicate.",
+    "shape": {
+      "description": "A shape in the core type notation (Section 3.3): a type expression such as \"uuid\", \"string?\", \"Order.Line Item[1..]\", \"enum(a, b)\" or \"Order { id, status }\", or an inline mapping of field names to shapes.",
       "oneOf": [
         {
           "type": "string",
@@ -80,68 +80,297 @@
         },
         {
           "type": "object",
-          "minProperties": 1
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/shape"}
         }
       ]
     },
+    "schemaField": {
+      "description": "The shape of a Data Object's fields or an Event's payload (Section 3.3): an inline shape in the core type notation, or a string link to an existing spec (AsyncAPI/JSON Schema/Avro).",
+      "$ref": "#/$defs/shape"
+    },
     "firstStep": {
-      "description": "The first entry of a Function's steps list. Besides the ordinary step verbs it may be `consumes`, naming an Event produced by another Component — marking the Function as subscribed to that Event (Sections 3.3, 3.4).",
-      "type": "object",
-      "minProperties": 1,
-      "maxProperties": 1,
-      "propertyNames": {
-        "enum": [
-          "consumes",
-          "calls",
-          "reads",
-          "modifies",
-          "produces",
-          "uses"
-        ]
-      },
-      "additionalProperties": {
-        "type": "string",
-        "minLength": 1
-      }
+      "description": "The first entry of a Function's steps. Besides an ordinary step it may be `consumes`, naming an Event another Component produces — the Function is started by that Event (Section 3.4).",
+      "oneOf": [
+        {"$ref": "#/$defs/step"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["consumes"],
+          "properties": {
+            "consumes": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
     },
     "step": {
-      "description": "One entry of a Function's ordered steps list (Section 3.3): a single-key mapping of a step verb to the name of the element it acts on. `consumes` is allowed only as the first step (see `firstStep`).",
+      "description": "One entry of a Function's steps (Section 3.3): exactly one step verb naming its target, plus `on` on a `calls` or `uses` step.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "calls": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A Function of the same Component."
+        },
+        "uses": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A Function of another Component, as \"Component / Function\".",
+          "pattern": "^.+ / .+$"
+        },
+        "reads": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A Data Object of the same Component."
+        },
+        "modifies": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A Data Object of the same Component."
+        },
+        "produces": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An Event of the same Component."
+        },
+        "on": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Maps the callee's outcomes to this Function's alternatives (Section 3.3). Unmapped outcomes continue the main path. On a `uses` step it must map `Unreachable`."
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["calls"],
+          "not": {
+            "anyOf": [
+              {
+                "required": ["uses"]
+              },
+              {
+                "required": ["reads"]
+              },
+              {
+                "required": ["modifies"]
+              },
+              {
+                "required": ["produces"]
+              }
+            ]
+          }
+        },
+        {
+          "required": ["uses", "on"],
+          "properties": {
+            "on": {
+              "required": ["Unreachable"]
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": ["calls"]
+              },
+              {
+                "required": ["reads"]
+              },
+              {
+                "required": ["modifies"]
+              },
+              {
+                "required": ["produces"]
+              }
+            ]
+          }
+        },
+        {
+          "required": ["reads"],
+          "not": {
+            "anyOf": [
+              {
+                "required": ["calls"]
+              },
+              {
+                "required": ["uses"]
+              },
+              {
+                "required": ["modifies"]
+              },
+              {
+                "required": ["produces"]
+              },
+              {
+                "required": ["on"]
+              }
+            ]
+          }
+        },
+        {
+          "required": ["modifies"],
+          "not": {
+            "anyOf": [
+              {
+                "required": ["calls"]
+              },
+              {
+                "required": ["uses"]
+              },
+              {
+                "required": ["reads"]
+              },
+              {
+                "required": ["produces"]
+              },
+              {
+                "required": ["on"]
+              }
+            ]
+          }
+        },
+        {
+          "required": ["produces"],
+          "not": {
+            "anyOf": [
+              {
+                "required": ["calls"]
+              },
+              {
+                "required": ["uses"]
+              },
+              {
+                "required": ["reads"]
+              },
+              {
+                "required": ["modifies"]
+              },
+              {
+                "required": ["on"]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "effect": {
+      "description": "One thing an alternative ending does instead of the main path (Section 3.3): a single step verb, without `on`.",
       "type": "object",
       "minProperties": 1,
       "maxProperties": 1,
-      "propertyNames": {
-        "enum": [
-          "calls",
-          "reads",
-          "modifies",
-          "produces",
-          "uses"
-        ]
-      },
-      "additionalProperties": {
-        "type": "string",
-        "minLength": 1
+      "additionalProperties": false,
+      "properties": {
+        "calls": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uses": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^.+ / .+$"
+        },
+        "reads": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modifies": {
+          "type": "string",
+          "minLength": 1
+        },
+        "produces": {
+          "type": "string",
+          "minLength": 1
+        }
       }
+    },
+    "alternative": {
+      "description": "A non-main ending of a Function (Section 3.3): one plain-language sentence saying what happened — it leaves nothing changed — or, when the ending does something, `when` plus `effects`.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["when", "effects"],
+          "properties": {
+            "when": {
+              "type": "string",
+              "minLength": 1
+            },
+            "effects": {
+              "type": "array",
+              "minItems": 1,
+              "items": {"$ref": "#/$defs/effect"}
+            }
+          }
+        }
+      ]
     },
     "contractKey": {
       "type": "string",
       "minLength": 1,
       "description": "A contract key: the name of an Actor, or the reserved key `Components` for Functions of other Components (Section 3.3). That an Actor name refers to an existing Actor is checked outside JSON Schema."
     },
+    "response": {
+      "description": "What a caller gets back for one outcome (Section 3.3): a code alone, or a code and a body. Code values are defined by the contract's binding.",
+      "oneOf": [
+        {
+          "type": ["string", "integer"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code"],
+          "properties": {
+            "code": {
+              "type": ["string", "integer"]
+            },
+            "body": {"$ref": "#/$defs/shape"}
+          }
+        }
+      ]
+    },
+    "contractEntry": {
+      "description": "How one Function is reached through one contract (Section 3.3).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["call", "responses"],
+      "properties": {
+        "call": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How the caller invokes the Function, in the style's own terms; format defined by the binding."
+        },
+        "request": {
+          "$ref": "#/$defs/shape",
+          "description": "What the caller sends, in the core type notation. It may reference the Component's own Data Objects, nested types and projections only."
+        },
+        "responses": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/response"},
+          "description": "Every outcome of the Function — its result and each alternative — mapped to what the caller gets back. Coverage is checked outside JSON Schema."
+        }
+      }
+    },
     "contract": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "description",
-        "binding"
-      ],
+      "required": ["binding", "functions"],
       "properties": {
         "description": {"$ref": "#/$defs/description"},
         "binding": {
           "type": "object",
-          "required": [
-            "style"
-          ],
+          "required": ["style"],
+          "additionalProperties": true,
           "properties": {
             "style": {
               "type": "string",
@@ -149,49 +378,23 @@
               "description": "The style whose binding interprets every other key in this block (e.g. OpenAPI, gRPC, AsyncAPI)."
             }
           },
-          "additionalProperties": true,
-          "description": "The contract's technical side (Section 3.3). Contour defines only `style`; every other key is defined by that style's binding, outside the paper."
+          "description": "The contract's technology (Section 3.3). Contour defines only `style`; every other key is defined by that style's binding."
+        },
+        "functions": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/contractEntry"},
+          "description": "The Functions reachable through this contract, keyed by Function name. A Function is external exactly when some contract lists it."
         },
         "requirements": {"$ref": "#/$defs/requirements"},
         "guardrails": {"$ref": "#/$defs/guardrails"}
       },
-      "description": "The access a Component offers to one kind of caller (Section 3.3)."
-    },
-    "functionContract": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "callers",
-        "operation"
-      ],
-      "properties": {
-        "callers": {
-          "type": "array",
-          "items": {"$ref": "#/$defs/contractKey"},
-          "minItems": 1,
-          "uniqueItems": true,
-          "description": "Keys of the Component contracts this Function is reached through: Actor names, or `Components` (Section 3.3)."
-        },
-        "operation": {
-          "type": "object",
-          "minProperties": 1,
-          "propertyNames": {
-            "type": "string",
-            "minLength": 1
-          },
-          "additionalProperties": true,
-          "description": "The operation, once per style among the callers' contract bindings, keyed by `binding.style`. Each value is in that style's own format — e.g. an OpenAPI path and Operation Object, or a gRPC rpc definition — and is validated by the style's binding, not by this schema."
-        }
-      },
-      "description": "An external Function's contract (Section 3.3): who may call it, and the operation they call."
+      "description": "How one kind of caller reaches the Component (Section 3.3)."
     },
     "system": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "description"
-      ],
+      "required": ["name", "description"],
       "properties": {
         "name": {"$ref": "#/$defs/name"},
         "description": {"$ref": "#/$defs/description"},
@@ -208,10 +411,7 @@
     "actor": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "description"
-      ],
+      "required": ["name", "description"],
       "properties": {
         "name": {"$ref": "#/$defs/name"},
         "description": {"$ref": "#/$defs/description"},
@@ -222,10 +422,7 @@
     "component": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "description"
-      ],
+      "required": ["name", "description"],
       "properties": {
         "name": {"$ref": "#/$defs/name"},
         "description": {"$ref": "#/$defs/description"},
@@ -236,7 +433,7 @@
           "minProperties": 1,
           "propertyNames": {"$ref": "#/$defs/contractKey"},
           "additionalProperties": {"$ref": "#/$defs/contract"},
-          "description": "The access this Component offers, keyed by who it is for: an Actor's name, or `Components` (Section 3.3). Keying makes 'one contract per caller' structural. That each key names an existing Actor is checked outside JSON Schema."
+          "description": "How the Component is reached, keyed by who reaches it: an Actor's name, or `Components` (Section 3.3)."
         },
         "functions": {
           "type": "array",
@@ -248,7 +445,7 @@
           "type": "array",
           "items": {"$ref": "#/$defs/dataObject"},
           "minItems": 1,
-          "description": "The Data Objects this Component owns, nested."
+          "description": "The Data Objects this Component owns and keeps, nested. Data that only crosses a boundary is described in a contract instead."
         },
         "events": {
           "type": "array",
@@ -273,21 +470,10 @@
     "function": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "description"
-      ],
+      "required": ["name", "description", "result"],
       "properties": {
         "name": {"$ref": "#/$defs/name"},
         "description": {"$ref": "#/$defs/description"},
-        "requirements": {"$ref": "#/$defs/requirements"},
-        "guardrails": {"$ref": "#/$defs/guardrails"},
-        "contract": {"$ref": "#/$defs/functionContract"},
-        "behavior": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Prose account of business rules and side effects, precise enough that its logic isn't left for an LLM to invent (Section 3.3)."
-        },
         "steps": {
           "type": "array",
           "minItems": 1,
@@ -295,41 +481,33 @@
             {"$ref": "#/$defs/firstStep"}
           ],
           "items": {"$ref": "#/$defs/step"},
-          "description": "Ordered list of the Function's own edges — `consumes` (first step only), calls, uses, reads, modifies, produces — the authoritative sequence the diagram's edges summarize (Section 3.3). A `uses` step never names a contract: the caller determines it."
-        }
+          "description": "The main path, in order (Section 3.3). The diagram's edges for these verbs are a derived summary of it."
+        },
+        "result": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The name of the ending the main path reaches."
+        },
+        "alternatives": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/alternative"},
+          "description": "Every other way the Function can end, keyed by outcome name."
+        },
+        "behavior": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Business rules the steps and endings don't express."
+        },
+        "requirements": {"$ref": "#/$defs/requirements"},
+        "guardrails": {"$ref": "#/$defs/guardrails"}
       },
-      "description": "A Function (Section 3). External when it declares a `contract`; private otherwise. Functions have no `schema`. A Function started by an Event (`consumes` first step) has no contract (check 5).",
-      "if": {
-        "required": [
-          "steps"
-        ],
-        "properties": {
-          "steps": {
-            "prefixItems": [
-              {
-                "required": [
-                  "consumes"
-                ]
-              }
-            ]
-          }
-        }
-      },
-      "then": {
-        "not": {
-          "required": [
-            "contract"
-          ]
-        }
-      }
+      "description": "A Function (Section 3), in business terms only. It is external when a contract of its Component lists it, private otherwise; it declares no inputs and carries nothing technical."
     },
     "dataObject": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "description"
-      ],
+      "required": ["name", "description"],
       "properties": {
         "name": {"$ref": "#/$defs/name"},
         "description": {"$ref": "#/$defs/description"},
@@ -341,10 +519,7 @@
     "event": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "description"
-      ],
+      "required": ["name", "description"],
       "properties": {
         "name": {
           "$ref": "#/$defs/name",
@@ -359,10 +534,7 @@
     "definition": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "description"
-      ],
+      "required": ["name", "description"],
       "properties": {
         "name": {"$ref": "#/$defs/name"},
         "description": {"$ref": "#/$defs/description"}

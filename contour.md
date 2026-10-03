@@ -151,8 +151,8 @@ Contour elements. Lowercase "system" is the ordinary word.
    an extensible one. The record tier may still name things that are never
    drawn. Where a concept can be *derived* rather than declared, it is:
    a Function has no separate "service" or "interface" counterpart; it is
-   externally accessible exactly when it names one of its Component's
-   contracts, and private otherwise.
+   externally accessible exactly when one of its Component's contracts
+   lists it, and private otherwise.
 
 3. **Logical relations, not communication mechanisms.** Contour records
    *that* one thing invokes, reaches, or reacts to another — never how
@@ -168,7 +168,10 @@ Contour elements. Lowercase "system" is the ordinary word.
    Only Functions of that Component may read or modify it directly; others
    reach it through an external Function or an Event, never by a direct data
    link. Ownership is asserted once and never implied, which is what
-   keeps data lineage legible.
+   keeps data lineage legible. A Data Object is state the Component
+   keeps; data that only crosses a boundary — what a caller sends, what
+   it gets back — is described in the contract where it crosses
+   (Section 3.3), not as a Data Object.
 
 5. **Two levels of detail, not two layers.** Contour has no
    business/application/technology strata to switch between — business
@@ -186,7 +189,7 @@ Contour elements. Lowercase "system" is the ordinary word.
    has a shape on the diagram and a structured record underneath it. The
    diagram is what gets read first and stays deliberately small; the
    record is where completeness lives — descriptions, schemas, a
-   Function's behavior and its ordered steps. When the two disagree, the
+   Function's steps and the ways it can end, a Component's contracts. When the two disagree, the
    record is authoritative.
 
 7. **Written for three audiences at once.** A non-developer must be able
@@ -215,9 +218,9 @@ Contour defines **six element types**:
 |---|---------|---------|
 | 1 | **System** | The business-level application a stakeholder would name — "Order Management", "Payments". A System groups the Components that together deliver one business capability. It performs no work of its own: everything a System does, one of its Components does. A System may contain a single Component, and often contains several |
 | 2 | **Component** | One lifecycle: whatever is built, versioned, released, and retired as a whole, usually by one owning team. The consequence is that it deploys as one artifact — a single service, or a monolith, however large. Anything with more than one lifecycle is modeled as more than one Component, tied together by `depends-on`. This is the unit most modeling happens at |
-| 3 | **Function** | A capability the Component performs — internal or external. It becomes externally accessible the moment it names one of its Component's contracts (Section 3.3); a Function that names none is private. A Function can consume and react to an Event, produce an Event, call another Function in the same Component, or use another Component's external Function. It is the minimal unit of Component behavior — but not smaller than an actual piece of business-related work: `Calculate Total` is a Function; `Parse Input` is an implementation step inside one, and belongs in that Function's `steps`/`behavior` record (Section 3.3), not on the diagram |
+| 3 | **Function** | A capability the Component performs — internal or external. It is externally accessible when one of its Component's contracts lists it (Section 3.3), and private otherwise. A Function is described in business terms only — what it does and how it can end; how it is reached is the Component's concern. A Function can consume and react to an Event, produce an Event, call another Function in the same Component, or use another Component's external Function. It is the minimal unit of Component behavior — but not smaller than an actual piece of business-related work: `Calculate Total` is a Function; `Parse Input` is an implementation step inside one, and belongs in that Function's `steps`/`behavior` record (Section 3.3), not on the diagram |
 | 4 | **Event** | A notification to the environment that a Component's state has changed — "Payment Completed", "Order Placed". An Event reports something that has already happened, which is why Event names are written in the past tense (Section 3.5) |
-| 5 | **Data Object** | A named piece of information the Component owns |
+| 5 | **Data Object** | A named piece of information the Component owns and keeps. Data that only travels across a boundary — a request, a response — is not a Data Object; it is described inline in the contract where it crosses (Section 3.3) |
 | 6 | **Actor** | A person, external system, or organization that participates from outside. An Actor is a *role with distinct access*, not a job title: two job titles that reach a Component the same way are one Actor, and the difference between them belongs in the Actor's `description` |
 
 and **eight relationship types** (three of which pair an inverse verb — `produces`/`consumes`, `reads`/`modifies`, `owns`/`references`):
@@ -226,7 +229,7 @@ and **eight relationship types** (three of which pair an inverse verb — `produ
 |---|---|---|
 | **groups** | System → Component | This Component is one of the deployables delivering the System's capability. A Component belongs to exactly one System |
 | **performs** | Component → Function | The component carries out this function |
-| **uses** | Actor → Component, or Actor / Function → Function | A caller — an Actor or a Function of *another* Component — reaches an external Function through that Function's Component contract for the caller (Section 3.3): the Actor's own contract, or the `Components` contract for a Function. At Component level, Actor → Component is a Context-view summary: the Actor reaches every Function that lists it. A Function never `uses` a Function of its own Component; inside a Component the relation is `calls` |
+| **uses** | Actor → Component, or Actor / Function → Function | A caller — an Actor or a Function of *another* Component — reaches an external Function through that Function's Component contract for the caller (Section 3.3): the Actor's own contract, or the `Components` contract for a Function. At Component level, Actor → Component is a Context-view summary: the Actor reaches every Function its contract lists. In a Function's `steps`, a `uses` names its target as `Component / Function`. A Function never `uses` a Function of its own Component; inside a Component the relation is `calls` |
 | **calls** | Function → Function | One Function invokes another *within the same Component*, with no contract in between. Order is not part of this edge — see the note below |
 | **produces / consumes** | Component → Event, or Function → Event | At Component level, a Context-view summary: the component raises or reacts to this event. At Function level, the precise cause: which specific Function produces it, or reacts to it — see Section 3.4 |
 | **reads / modifies** | Function → Data Object | A Function's actual read or write access to a Data Object owned by its *own* Component — principle 4 at Function-level precision. A Function in another Component can only reach that data through an Event it consumes or an external Function it uses |
@@ -285,7 +288,8 @@ graph TD
 `produces`/`consumes` and `uses` appear at both levels — a
 Component-level edge summarizing the Function-level ones beneath it; the
 other six belong to one view each. The heavy border marks an external
-Function — one that lists at least one contract (Section 4).
+Function — one listed by at least one of its Component's contracts
+(Section 4).
 
 ### 3.2 Two Levels of Detail: Context View and Functionality View
 
@@ -326,10 +330,22 @@ consistency," expected but not enforced (Section 6).
 every diagram in this paper, a Component diagram draws the focal
 Component *opened* — its Functions, external ones marked, the Data
 Objects it owns, the Events it produces — and every neighbouring
-Component *closed*, as a Context-view box with only its `depends-on`,
-`consumes` and `references` edges. That is the Context view of the
-landscape and the Functionality view of one Component on one page; the
-Functionality view of a neighbour is a separate drill-down.
+Component *half-open*: closed, except for the Functions that take part
+in a `uses` edge with the focal Component, which are drawn on the
+neighbour's boundary. Every cross-Component call is therefore visible on
+the one page as a Function-to-Function `uses` edge, and a `depends-on`
+edge is drawn only for a neighbour whose Functions aren't shown. That is
+the Context view of the landscape and the Functionality view of one
+Component on one page; the rest of a neighbour's Functionality view is a
+separate drill-down.
+
+**A trace view is generated, never drawn.** Following one Function's
+`steps` across Components — through each `calls` and `uses`, branching
+at every `on` mapping (Section 3.3) — yields every path the Function can
+take and the ending each path reaches, with the response a caller gets
+for it from the Component's contract. It needs no data beyond the
+records, so it is a view, not a diagram to maintain; Section 5 shows
+one.
 
 ### 3.3 The Structured Record
 
@@ -338,49 +354,41 @@ deliberately does not answer "what would I need to know to build this,
 or to change it correctly." That second question is answered by a
 structured record attached to each element — built from a small, shared
 set of possible fields, rather than each of the six inventing its own
-shape:
+shape. The record keeps two concerns apart: a **Function** says, in
+business terms, what happens and how it can end; its **Component** says
+how outsiders reach it — who, through what technology, sending what and
+getting what back. A Function's record carries nothing technical.
 
 - **`description`** — required. A plain-language sentence or two, same
   register as the name (Section 3.5) — what this element is, for a
   reader who isn't going to open the schema.
-- **`schema`** — the structured shape of data: a Data Object's fields,
-  an Event's payload. It can be given inline, or as a link to an
-  existing schema artifact (an AsyncAPI file, a JSON Schema, an Avro
-  definition) rather than a re-authored duplicate — for legacy systems
-  in particular (Section 1), the schema usually already exists
-  somewhere; Contour can point at it instead of restating it. System,
-  Component, Actor, and Function have no `schema`.
-
-A Function deliberately has no `schema`: a private Function's data shape
-is already determined by its relations — the Data Objects it
-`reads`/`modifies` and any external Function it `uses` elsewhere — and
-a separate schema would restate those and drift from them. What an
-external Function promises outside callers is not derivable from
-anything else in the model, so it carries a `contract` instead: who may
-call it, and the operation they call (see *Contracts and external
-Functions* below).
+- **`schema`** — the structured shape of a Data Object's fields or an
+  Event's payload, in the core type notation (below). It can also be a
+  link to an existing schema artifact (an AsyncAPI file, a JSON Schema,
+  an Avro definition) rather than a re-authored duplicate — for legacy
+  systems in particular (Section 1), the schema usually already exists
+  somewhere. System, Component, Actor, and Function have no `schema`.
 
 Any element may also carry `requirements` and `guardrails` (Section
 3.6); because they apply everywhere, the table lists them once rather
-than per element. Beyond that, a Function carries `behavior` and
-`steps` — the one place `description` alone leaves room to guess — and
-an external Function carries a `contract`:
+than per element:
 
 | Element | Property | Description |
 |---|---|---|
 | **any element** | `requirements` | Optional list of Requirement names this element must satisfy (Section 3.6) |
 | | `guardrails` | Optional list of Guardrail names this element must stay inside (Section 3.6) |
-| **Function** | `description` | Plain-language summary of what the Function does |
-| | `behavior` | Prose account of business rules and side effects, precise enough that its logic isn't left for an LLM to invent |
-| | `steps` | Ordered list of the Function's own `consumes` (first step only)/`calls`/`uses`/`reads`/`modifies`/`produces` edges — the authoritative sequence the diagram's edges summarize |
-| | `contract` | External Functions only: `callers`, the Component contract keys it is reached through (Actors, or `Components`), and `operation`, its description in each style's own format — see below. Its presence is what makes the Function external |
+| **Function** | `description` | Plain-language summary of the business case the Function handles |
+| | `steps` | The main path, in order, as relationship verbs; where a called Function's ending changes this one's, an `on` mapping says how |
+| | `result` | The name of the ending the main path reaches |
+| | `alternatives` | Every other way the Function can end, each named and explained in one sentence |
+| | `behavior` | Business rules that the steps and endings don't express |
 | **Data Object** | `description` | Plain-language summary of what this data represents |
-| | `schema` | Fields and nested types, in the core type notation (below) |
+| | `schema` | Fields and nested types |
 | **Event** | `description` | Plain-language summary of what happened |
 | | `schema` | Payload shape |
 | **System** | `description` | Plain-language statement of the business capability this System delivers |
 | **Component** | `description` | Plain-language purpose of the Component |
-| | `contract` | The access the Component offers, keyed by who it is for — an Actor, or `Components` — each with a `description` and a `binding` (see below) |
+| | `contract` | How the Component is reached, keyed by who reaches it — an Actor, or `Components` — with the technology and, per Function, the call, its request and its responses (see below) |
 | **Actor** | `description` | Plain-language role, and the job titles or systems that play it |
 
 A sketch of what this looks like as data (illustrative, not the final
@@ -389,66 +397,128 @@ syntax — the serialization used in the experiments is described in
 
 ```yaml
 Function: Place Order
-  description: Accepts a new order request, validates it, and creates it.
-  behavior: >
-    Validates the order via Validate Order, which checks each item
-    against current stock. Rejects the order if validation fails. On
-    success, persists an Order and emits Order Placed.
+  description: Accepts a new order, checks it, and creates it.
   steps:
     - calls: Validate Order
+      on: { Short: Out Of Stock, Stock Unknown: Stock Unavailable }
     - calls: Calculate Total
     - modifies: Order
     - produces: Order Placed
+  result: Placed
+  alternatives:
+    Out Of Stock: Some items can't be supplied in the requested quantity.
+    Stock Unavailable: Stock couldn't be checked right now.
+    Below Minimum: The order total is under $1.00.
+  requirements: [Minimum Order Value]
 
 Function: Validate Order
-  description: Checks that every item on the order is in stock.
+  description: Checks every item of the new order against stock.
   steps:
-    - uses: Check Stock
+    - uses: Inventory Service / Check Stock
+      on: { Short: Short, Unreachable: Stock Unknown }
+  result: All Available
+  alternatives:
+    Short: Some items have less stock than ordered.
+    Stock Unknown: Inventory Service couldn't be reached.
+
+Function: Calculate Total
+  description: Computes the order total from its line items.
+  result: Calculated
+  behavior: Sum of quantity × unit price per line item; no discounts or tax.
 
 DataObject: Order
   description: A customer's order, from placement through fulfillment.
   schema:
     id: uuid
     customerId: string
-    items: LineItem[1..]
+    items: Line Item[1..]
     total: decimal
     status: enum(pending, confirmed, shipped, cancelled)
-    LineItem: { productId: string, quantity: integer, unitPrice: decimal }
+    Line Item: { productId: string, quantity: integer, unitPrice: decimal }
 ```
 
-`steps` is an ordered list, and each entry is one of the relationship
-verbs Section 3 already defines — `consumes`, `calls`, `uses`, `reads`,
-`modifies`, `produces` — so it adds no new relationship type. A `uses`
-step never names the contract it goes through: the caller determines it
-(see *Contracts and external Functions* below).
+#### Steps
 
-`consumes` is special: it may appear only as the **first** step, and at
-most once. It marks the Function as *subscribed* to that Event — the
-Event's arrival is what starts it, and the steps after it are how the
-Function processes it (Section 3.4). A Function therefore has one
-declared way of being started: by an Event, through its first step; by
-an outside caller, through a contract; or, with neither, only by
-another Function of its own Component through `calls`. A Function that
-must react to two Events is two Functions, which may share a private
-one through `calls`.
+`steps` is the Function's main path: an ordered list in which each entry
+is one of the relationship verbs Section 3 already defines — so it adds
+no new relationship type:
 
-What `steps` changes
-is which side is authoritative: the diagram's edges for those verbs are a
-**derived, unordered summary** of the Function's `steps` list — the same
-rollup as principle 5 (Context summarizes Functionality), applied one
-level further down (record summarizes into diagram).
+| Step | Target | Notes |
+|---|---|---|
+| `consumes` | an Event of another Component | First step only, at most once: the Function is subscribed to that Event, and its arrival starts it (Section 3.4) |
+| `calls` | a Function of the same Component | |
+| `uses` | `Component / Function` | Names the other Component, so a reader of the steps sees the call leave the Component |
+| `reads` / `modifies` | a Data Object of the same Component | |
+| `produces` | an Event of the same Component | |
 
-`steps` is deliberately a straight line, not a control-flow language: it
-can't express "these two run in parallel" or "only call Calculate Total
-if validation passed." That is out of scope for now, and worth
-revisiting only if the experiments show plain sequence isn't enough
-(Section 6).
+What `steps` changes is which side is authoritative: the diagram's edges
+for those verbs are a **derived, unordered summary** of the steps — the
+same rollup as principle 5 (Context summarizes Functionality), applied
+one level further down (record summarizes into diagram).
+
+**`on`: when a called Function's ending changes this one's.** A `calls`
+or `uses` step may map the callee's endings onto the caller's own
+alternatives: `on: { Short: Out Of Stock }` says that when `Validate
+Order` ends *Short*, `Place Order` ends *Out Of Stock*. A callee ending
+the step doesn't map continues the main path. Every `uses` also maps
+**`Unreachable`** — the built-in ending of any call to another Component
+that couldn't be completed — so each cross-Component call states, in
+business terms, what a failed call means for the caller: end with an
+alternative of its own, or carry on. Retries and timeouts are technical
+and belong to the contract's binding (below), never to a step.
+
+`steps` is deliberately a straight line, not a control-flow language:
+each step either continues or ends the Function in one of its endings,
+and nothing branches into a second path. Parallelism is out of scope.
+
+#### Outcomes: `result` and `alternatives`
+
+A Function's **outcomes** are every distinguishable way it can end,
+named in business terms. They are what its callers react to, what its
+Component's contracts map to responses, and what its tests cover — one
+test per outcome.
+
+- **`result`** names the ending the main path reaches: `Placed`,
+  `Found`, `Cancelled`. Its effects are exactly the `steps`, so it
+  carries nothing else.
+- **`alternatives`** lists every other ending. In the short form an
+  alternative is a name and one plain-language sentence saying what
+  happened — `Below Minimum: The order total is under $1.00.` An
+  alternative leaves nothing changed. When an ending *does* something
+  instead — announces a failure, say — the long form gives its sentence
+  as `when` and lists what it does as `effects`, in the same step verbs:
+
+```yaml
+  alternatives:
+    Order Missing:
+      when: The order no longer exists.
+      effects:
+        - produces: Invoice Failed
+    Deferred: Order Service couldn't be reached; the Event is processed again later.
+```
+
+An alternative is reached either by its own condition, or by an `on`
+mapping from a called Function — in which case its sentence restates, in
+the caller's terms, what the callee reported. An alternative is not
+necessarily a failure: `Check Stock` ending *Short* is a successful
+answer to "is it in stock?". But it is always a *business* ending:
+malformed requests and failed authentication are the binding's concern
+and never appear as alternatives.
+
+The record says *that* each alternative can happen, not *where* in the
+steps its condition is decided. Where that matters, a Guardrail says so
+once for every Function it applies to — for example, that nothing is
+persisted or announced unless every check has passed (Section 3.6, and
+the `All Or Nothing` guardrail in Section 5). The position of each check
+then follows from what the condition needs and what the guardrail
+forbids.
 
 #### Core type notation
 
-Every `schema` in a record — a Data Object's fields, an Event's payload —
-uses one small notation, so that a shape means the same thing wherever
-it appears and whatever technology later carries it:
+Every shape in a record — a Data Object's fields, an Event's payload,
+and the requests and responses in a contract — uses one small notation,
+so that a shape means the same thing wherever it appears and whatever
+technology later carries it:
 
 | Notation | Meaning |
 |---|---|
@@ -457,102 +527,120 @@ it appears and whatever technology later carries it:
 | `T[]`, `T[1..]` | A list; `[1..]` requires at least one entry |
 | `T?` | Optional; every field without `?` is required |
 | `Order` | A reference to a Data Object |
-| `Order.LineItem` | A type nested in a Data Object's schema — defined once, in its owner (principle 4) |
+| `Order.Line Item` | A type nested in a Data Object's schema — defined once, in its owner (principle 4) |
+| `Order { id, status }` | A projection: only the named fields of a Data Object or nested type |
+| `{ productId: string, … }` | An inline shape, for data that has no Data Object of its own |
 
 How each type is represented on the wire — whether a `decimal` is a JSON
 number or a string, what a `uuid` becomes in protobuf — is not part of
-the notation; it is defined by the binding (below). The same binding
-defines how an operation (below) refers to a Data Object, so that the
-shape of what an operation sends or returns still has one home.
+the notation; it is defined by the binding (below).
 
-#### Contracts and external Functions
+#### Contracts
 
-A **contract** is the access a Component offers to one kind of caller,
+A **contract** is how one kind of caller reaches the Component. It is
 declared on the Component's record and **keyed by who it is for**:
 either an Actor, or the reserved key `Components`, which stands for any
-Function of another Component. A contract is not separately named —
-the key *is* its meaning, and because it must be an existing Actor or
-`Components`, a renamed or misspelled audience fails a check rather
-than silently breaking the link. It follows that a Component has at
-most one contract per Actor, and at most one for other Components.
+Function of another Component. A contract is not separately named — the
+key *is* its meaning, and because it must be an existing Actor or
+`Components`, a renamed or misspelled caller fails a check rather than
+silently breaking the link. A Component therefore has at most one
+contract per Actor, and at most one for other Components.
 
 Each contract carries:
 
 - **`description`** — what this access is for, in plain language.
-- **`binding`** — the contract's whole technical side, in one block.
-  Contour defines a single key in it, **`style`** (OpenAPI, gRPC,
-  AsyncAPI, RMI, …), which names the *binding* that interprets every
-  other key in the block — base address, authentication, error
-  envelope, versioning, and so on (see *Bindings* below).
+- **`binding`** — the technology, in one block. Contour defines a single
+  key in it, **`style`** (OpenAPI, gRPC, AsyncAPI, RMI, …), which names
+  the *binding* that interprets every other key — base address,
+  authentication, error envelope, versioning, and so on (see *Bindings*
+  below).
+- **`functions`** — the Functions reachable through this contract, each
+  with:
+  - **`call`** — how the caller invokes it, in the style's own terms
+    (`POST /{id}/cancel`, `GetOrder`).
+  - **`request`** — what the caller sends, in the core type notation.
+  - **`responses`** — every outcome of the Function, each mapped to what
+    the caller gets back: a code alone (`Not Found: 404`), or a code and
+    a body (`Found: { code: 200, body: "Order { id, status }" }`).
 - **`requirements`** / **`guardrails`** — optional, as on any element;
-  here they apply to every Function reached through the contract (e.g.
-  a Customer contract's "own orders only").
+  here they apply to every Function reached through the contract.
 
-Contracts are record-tier, like Requirements and Guardrails: Contour has
-no separate element for them and never draws them, and the vocabulary
-stays at six elements.
-
-A Function becomes external by declaring a **`contract`** of its own,
-with two parts:
-
-- **`callers`** — the keys of its Component's contracts it is reached
-  through: Actors, or `Components`. There is no limit on how many.
-- **`operation`** — the operation those callers invoke, given **once per
-  style** among those contracts' bindings, each in *that style's own
-  format*: for OpenAPI, the path and method with their Operation Object;
-  for gRPC, the `rpc` definition and its messages. Contour defines the
-  slot — one entry per style, keyed by the style's name — and leaves the
-  format of each entry to that style's binding. An existing spec's
-  operation can therefore be pasted in as it is, rather than restated in
-  a Contour-specific notation.
-
-One invariant holds whatever the number of callers: **a Function has one
-operation shape and one `behavior`, whichever contract it is reached
-through.** Listing several callers asserts the operation has the same
-shape and the same business rules for every one of them. When the shape
-or the rules differ — a customer may cancel only before shipment,
-support staff at any stage but with a reason — that is two business
-decisions, and so two Functions, by the rule in Section 3.6 that a
-business decision belongs to the Function that owns it. Logic they
-genuinely share goes in a private Function both `call`. When the callers
-span two styles, the Function carries two `operation` entries, and
-keeping them describing the same shape is a check its bindings must
-make.
-
-**Which contract a `uses` goes through is never declared; it follows
-from the caller.** An Actor reaches a Function through the contract keyed
-by that Actor; a Function of another Component reaches it through
-`Components`. The target must list that key among its `callers`. The
-same rule lets an Actor be drawn once, as a single `uses` edge to the
-Component (Section 3.2): the Actor reaches every Function that lists it.
-Drawing Function-level edges from an Actor is only needed to show
-narrower reach.
+A Function is **external** exactly when some contract lists it, and
+private otherwise. Contracts are record-tier, like Requirements and
+Guardrails: Contour has no separate element for them and never draws
+them, and the vocabulary stays at six elements.
 
 ```yaml
 Component: Order Service
   contract:
     Customer:
       description: Customers placing, tracking and cancelling their own orders.
-      binding: { style: OpenAPI, base: /v1/orders, auth: customer token }
+      binding: { style: OpenAPI, base: /v1/orders, auth: customer token, errors: RFC 7807 }
       guardrails: [Own Orders Only]
+      functions:
+        Fetch Order:
+          call: GET /{id}
+          request: { id: uuid }
+          responses:
+            Found:     { code: 200, body: "Order { id, items, total, status }" }
+            Not Found: 404
     Components:
       description: Other Components reading orders.
       binding: { style: gRPC, service: orders.v1.OrderService, auth: mTLS service identity }
-
-Function: Fetch Order
-  description: Returns a single order.
-  contract:
-    callers: [Customer, Components]
-    operation:
-      OpenAPI: …   # an OpenAPI path, method and Operation Object
-      gRPC: …      # an rpc definition and its messages
-  steps:
-    - reads: Order
+      functions:
+        Fetch Order:
+          call: GetOrder
+          request: { id: uuid }
+          responses:
+            Found:     { code: OK, body: Order }
+            Not Found: NOT_FOUND
 ```
 
-The keys after `style` in each `binding`, and the content of each
-`operation` entry, belong to the style's binding, not to Contour;
-Section 5 shows both filled in.
+The keys after `style` in each `binding`, and the form of each `call`
+and code, belong to the style's binding, not to Contour.
+
+**Requests and responses are described where they cross.** They are
+inline shapes, not Data Objects: they may reference the Component's own
+Data Objects, nested types and projections of them — the projection
+above is how the Customer sees four fields of an Order while other
+Components get all of it — but never another Component's. Each Component
+describes its own boundary.
+
+**One Function, one set of rules.** A Function listed by several
+contracts has the same steps and the same outcomes for every caller;
+only what each caller sends and sees may differ, because that is a
+technical view of the same business case. When the *rules* differ — a
+customer may cancel only before shipment, support staff at any stage but
+with a reason — that is two business decisions, and so two Functions, by
+the rule in Section 3.6 that a business decision belongs to the Function
+that owns it.
+
+**Which contract a `uses` goes through is never declared; it follows
+from the caller.** An Actor reaches a Function through the contract keyed
+by that Actor; a Function of another Component reaches it through
+`Components`. The same rule lets an Actor be drawn once, as a single
+`uses` edge to the Component (Section 3.2).
+
+#### What a Function can work with
+
+A Function declares no inputs of its own; what it can work with follows
+from how it was started:
+
+- **Reached through a contract** — the `request` of the contract entry
+  it was reached through, the **caller's identity** (the authenticated
+  Actor, or the calling Component; how it is established is the
+  binding's `auth`), and its Component's Data Objects. A Function listed
+  by several contracts may rely only on what every one of them provides.
+- **Started by an Event** — the Event's `schema`, and its Component's
+  Data Objects.
+- **Reached through `calls`** — whatever its caller can work with at
+  that step. A private Function runs inside its caller's context, and
+  what it reports flows back into that context. A private Function with
+  several callers may rely only on what every caller has.
+
+Data is therefore declared formally where it crosses a boundary — in
+contracts and Event schemas — and inside a Component it is carried by
+context.
 
 #### Bindings
 
@@ -566,48 +654,50 @@ generate from. A binding must define:
 1. **Binding keys** — which keys the `binding` block accepts besides
    `style`, and their allowed values (including how authentication is
    structured).
-2. **Operation format** — what a Function's `operation` entry for the
-   style contains, and how it combines with the binding keys into a full
-   address.
-3. **Data Object references** — how an operation refers to a Data Object
-   or a nested type, and how each core type is represented in the style.
-4. **Defaults** — what applies when a binding key is omitted.
-5. **Artifact** — which spec the binding assembles from the record, or
+2. **Call format** — what a valid `call` is, and how it combines with
+   the binding keys into a full address.
+3. **Request placement** — where each request field travels: path,
+   query, body, header, or message field.
+4. **Response codes** — what a valid code is, and how the outcome's name
+   travels with it, so a caller sees "Already Shipped," not just "409."
+5. **Type mapping** — how each core type is represented in the style.
+6. **Defaults** — what applies when a binding key is omitted.
+7. **Artifact** — which spec the binding assembles from the record, or
    checks it against.
-6. **Checks** — the style-specific consistency checks, including, for a
-   Function whose callers span several styles, that its operations
-   describe the same shape.
 
 **The record is the authority; a contract spec is an output.** An
 OpenAPI, AsyncAPI or protobuf file for a contract is assembled from the
-record — the Component's binding keys, its Functions' operations, the
-Data Objects they refer to — or checked against it, the same way code
-is. Unlike a Data Object's schema, a contract spec is never linked as
-the source of truth: one spec file spans many Functions, so linking it
-would give every Function's shape two homes that can disagree. An
-existing spec from a legacy system is an *import source* for the record
-— its operations are pasted into the Functions that perform them — not a
-reference from it. Drift between record and spec is then the same
-problem as drift between record and code, and is checked the same way
-(Section 3.6).
+record — the contract's binding keys, its calls, requests and
+responses, the Data Objects they refer to — or checked against it, the
+same way code is. A contract spec is never linked as the source of
+truth: one spec file spans many Functions, so linking it would give
+every exchange two homes that can disagree. An existing spec from a
+legacy system is an *import source* for the record, not a reference
+from it. Drift between record and spec is then the same problem as
+drift between record and code, and is checked the same way (Section
+3.6).
 
-Because contracts are structured, their consistency is mechanically
-checkable rather than a matter of judgement. The core checks are
-style-neutral; each binding adds its own:
+#### Consistency checks
+
+Because contracts, steps and outcomes are structured, their consistency
+is mechanically checkable rather than a matter of judgement. The core
+checks are style-neutral; each binding adds its own:
 
 1. Every contract key is an existing Actor or `Components`, and every
-   name in a Function's `contract.callers` is a key on its own
-   Component.
-2. A Function's `contract.operation` has exactly one entry per
-   `binding.style` among its callers' contracts.
-3. No two Functions resolve to the same operation for the same caller.
-4. Every `uses` targets a Function whose `contract.callers` includes the
-   caller's key — the calling Actor, or `Components` for a calling
-   Function.
-5. A `consumes` step appears only first and at most once, names an Event
-   produced by another Component, and appears only in a Function that
-   has no `contract` — a Function is started by an Event or by a
-   caller, not both.
+   Function a contract lists is performed by that Component.
+2. Each listed Function's `responses` cover its `result` and every
+   alternative, and only those.
+3. No two Functions share a `call` within one contract.
+4. Requests and response bodies reference only the Component's own Data
+   Objects, their nested types, or projections of them.
+5. A `uses` step names the Component that performs the target, and that
+   Component's `Components` contract lists the target.
+6. `on` keys are outcomes of the callee, or `Unreachable` on a `uses`;
+   `on` values are alternatives of the calling Function.
+7. Every `uses` step maps `Unreachable`.
+8. `consumes` appears only as the first step, at most once, on an Event
+   another Component produces; a Function that has it is listed by no
+   contract — it is started by an Event or by a caller, not both.
 
 ### 3.4 Event-Driven Causal Chains
 
@@ -629,7 +719,17 @@ Function: Reserve Stock
     - consumes: Order Placed
     - modifies: Stock
     - produces: Stock Reserved
+  result: Reserved
+  alternatives:
+    Shortage:
+      when: Some items have less stock than ordered.
+      effects:
+        - produces: Stock Shortage Detected
 ```
+
+A Function started by an Event has no caller to answer, so its
+alternatives are not responses: they say what else it does. `Shortage`
+announces itself with an Event of its own rather than ending silently.
 
 As a shape:
 
@@ -684,12 +784,16 @@ stylistic afterthought:
   acts on ("Reserve Stock", "Validate Order", "Calculate Total") — not
   the technical means used to do it, the class it happens to map to, or
   the protocol it runs over. Protocol and transport belong to a
-  contract's `binding`, and an operation or method name
-  (`GetOrder`) to the Function's `contract.operation` — never in the Function's
-  name. Principle 7 applied to naming.
+  contract's `binding`, and an operation or method name (`GetOrder`) to
+  the contract's `call` — never in the Function's name. Principle 7
+  applied to naming.
+- **Outcomes are named for the result, not the check.** "Placed",
+  "Already Shipped", "Below Minimum" — not "Validation Failed" or "Error
+  3". An outcome's name is what a caller sees travel with its response
+  (Section 3.3), so it is written for them.
 - **A Function split by audience says whose action it is.** When one
   piece of work becomes two Functions because its rules differ per
-  contract (Section 3.3), each name states who acts: "Cancel Own Order",
+  caller (Section 3.3), each name states who acts: "Cancel Own Order",
   "Cancel Order for Customer" — not "Cancel Order" twice, and not the
   caller in brackets. A Function reached through several contracts with
   the same rules keeps one plain name.
@@ -763,7 +867,24 @@ because that fact falls below a threshold is a business decision, and
 that decision belongs to whichever Function owns it. `Place Order`
 calls `Calculate Total` (per its `steps` list in Section 3.3) to get
 the total, then is the one responsible for satisfying the Requirement
-against it.
+against it — which is why its record has an alternative, `Below
+Minimum`, that the Requirement's test drives it into.
+
+Guardrails also carry the rules about *how* a Function's endings are
+reached, which keeps the Function itself a simple path. One guardrail
+on a Component can say what every one of its Functions must respect:
+
+```yaml
+Guardrail: All Or Nothing
+  description: >
+    A change is persisted and announced only after every check has
+    passed. An alternative ending leaves no change and produces no Event,
+    unless it lists effects of its own.
+```
+
+With it, `Below Minimum` needs no position in `Place Order`'s steps: it
+needs the total, so it is decided after `Calculate Total`, and it must
+leave nothing behind, so it is decided before `modifies: Order`.
 
 Neither field replaces `behavior`: that says what the Function does, a
 Requirement what must be true of it, a Guardrail what it must not
@@ -794,11 +915,11 @@ so long as the six stay distinguishable:
   solid ones
 - **Component** — rounded rectangle, bold border
 - **Function** — plain rectangle, nested inside the Component box. An
-  external Function — one that lists a contract — has a heavy border,
-  sits on the Component's edge, and carries its contract keys after its
-  name (`Fetch Order · Customer, Components`); a private one has a
-  normal border and sits fully inside. Contracts themselves are never
-  drawn
+  external Function — one that a contract lists — has a heavy border,
+  sits on the Component's edge, and carries its callers after its name
+  (`Fetch Order · Customer, Components`), derived from the contracts
+  that list it; a private one has a normal border and sits fully inside.
+  Contracts themselves are never drawn
 - **Event** — hexagon
 - **Data Object** — cylinder (borrowed shorthand for "a store of data,"
   used purely as a pictogram — not implying a database)
@@ -812,7 +933,10 @@ the diagram is readable without a legend. An Actor is normally drawn
 with one `uses` edge to the Component: since the Actor's contract is
 keyed by the Actor, the edge needs no further label, and the Functions
 it reaches are the ones carrying the Actor's name. Drawing a Function
-inside its Component's boundary may stand in for the `performs` edge.
+inside its Component's boundary may stand in for the `performs` edge. A
+neighbouring Component is drawn half-open (Section 3.2): its Functions
+that take part in a `uses` edge with the focal Component sit on its
+boundary.
 
 Every diagram in this paper follows these shapes, so Sections 3.1 and 5
 double as a notation reference.
@@ -823,7 +947,7 @@ double as a notation reference.
 
 A small **Order Service** in an e-commerce context, drawn as the default
 one-page diagram of Section 3.2 — Order Service opened, its neighbours
-closed:
+half-open:
 
 ```mermaid
 graph LR
@@ -840,51 +964,59 @@ graph LR
         CalcTotal[Function: Calculate Total]
     end
 
+    subgraph Inventory [Component: Inventory Service]
+        CheckStock["Function: Check Stock<br/>· Components"]:::ext
+    end
+
+    subgraph Billing [Component: Billing Service]
+        CreateInvoice[Function: Create Invoice]
+    end
+
     Customer -->|uses| OrderSvc
     Staff -->|uses| OrderSvc
     PlaceOrder -->|calls| ValidateOrder
     PlaceOrder -->|calls| CalcTotal
+    ValidateOrder -->|uses| CheckStock
+    CreateInvoice -->|uses| FetchOrder
     OrderSvc -->|produces| OrderPlaced{{Event: Order Placed}}
     OrderSvc -->|produces| OrderCancelled{{Event: Order Cancelled}}
     OrderSvc -->|owns| OrderData[(Data Object: Order)]
-    Billing(Component: Billing Service) -->|consumes| OrderPlaced
-    Inventory(Component: Inventory Service) -->|consumes| OrderPlaced
+    Billing -->|consumes| OrderPlaced
+    Inventory -->|consumes| OrderPlaced
     Billing -->|references| OrderData
-    Billing -->|depends-on| OrderSvc
-    OrderSvc -->|depends-on| Inventory
 
     classDef ext stroke-width:3px
 ```
 
-Order Service offers three contracts: the **Customer**'s access
-(OpenAPI), the **Support Staff**'s (OpenAPI), and other **Components'**
-(gRPC). Each Actor's edge to the Component means that Actor's contract,
-and through it every Function whose label carries the Actor's name.
-`Validate Order` and `Calculate Total` list no one, so they stay
-private — `Place Order` reaches them with `calls`, inside the Component,
-no contract in between.
+Order Service is reached three ways: by the **Customer** (OpenAPI), by
+**Support Staff** (OpenAPI), and by other **Components** (gRPC). Each
+Actor's edge to the Component means that Actor's contract, and through
+it every Function whose label carries the Actor's name. `Validate Order`
+and `Calculate Total` are listed by no contract, so they stay private —
+`Place Order` reaches them with `calls`, inside the Component.
 
-`Fetch Order` behaves the same for every caller, so it lists all three.
-Cancellation is split, because the rules differ: a customer may cancel
-only before shipment, support staff at any stage but with a reason. The
-two Functions are named for whose action they are (Section 3.5).
+`Fetch Order` behaves the same for every caller, so all three contracts
+list it; what each caller sees differs only in the contract — the
+Customer gets four fields of an Order, Staff and other Components the
+whole record. Cancellation is split, because the rules differ: a
+customer may cancel only before shipment, support staff at any stage but
+with a reason. The two Functions are named for whose action they are
+(Section 3.5).
 
-Order Service owns the `Order` Data Object and announces placement via
-`Order Placed`, which both Billing and Inventory consume. Billing
-`references` the Order data through `Fetch Order` rather than reading it
-directly (principle 4) — as a Component it goes through the `Components`
-contract, and that access is why Billing also `depends-on` Order
-Service. Inventory consumes the Event but draws no `depends-on` edge:
-the Event is the coupling.
+Both neighbours are half-open. `Validate Order` uses Inventory's `Check
+Stock`, and Billing's `Create Invoice` uses `Fetch Order` — the latter is
+how Billing `references` Order data without reading it directly
+(principle 4). Because those `uses` edges are drawn, the `depends-on`
+edges they would summarize are not. Inventory and Billing both consume
+`Order Placed`; an Event creates no `depends-on`, because the Event is
+the coupling.
 
 Deployment nodes, infrastructure, and organizational elements are absent
 by design (principle 5).
 
 **The records behind the diagram.** The keys after `style` in each
-`binding`, and the content of each `operation`, are illustrative — what
-an OpenAPI or gRPC binding might define (Section 3.3). Each `operation`
-is written as it would appear in that style's own spec, so an existing
-spec's operation can be pasted in unchanged:
+`binding`, and the form of each `call` and code, are illustrative —
+what an OpenAPI or gRPC binding might define (Section 3.3):
 
 ```yaml
 Actor: Customer
@@ -893,190 +1025,31 @@ Actor: Customer
 Actor: Support Staff
   description: Customer-service and back-office staff handling order issues.
 
-Component: Order Service
-  description: Owns the order lifecycle from placement to cancellation.
-  contract:
-    Customer:
-      description: Customers placing, tracking and cancelling their own orders via web and mobile.
-      binding: { style: OpenAPI, base: /v1/orders, auth: customer token, errors: RFC 7807 }
-      guardrails: [Own Orders Only]
-    Support Staff:
-      description: Staff viewing and cancelling orders on a customer's behalf.
-      binding: { style: OpenAPI, base: /ops/v1/orders, auth: staff SSO, errors: RFC 7807 }
-    Components:
-      description: Other Components reading orders.
-      binding: { style: gRPC, service: orders.v1.OrderService, auth: mTLS service identity }
+Requirement: Minimum Order Value
+  description: An order must total at least $1.00 before it can be placed.
 
-Function: Place Order
-  description: Accepts a new order request, validates it, and creates it.
-  contract:
-    callers: [Customer]
-    operation:
-      OpenAPI:
-        /:
-          post:
-            operationId: placeOrder
-            requestBody:
-              required: true
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    required: [items]
-                    properties:
-                      items:
-                        type: array
-                        minItems: 1
-                        items: { $ref: '#/components/schemas/Order.LineItem' }
-            responses:
-              '201':
-                description: The order was accepted and is pending.
-                content:
-                  application/json:
-                    schema: { $ref: '#/components/schemas/Order' }
-              '409':
-                description: Out of stock — at least one item can't be supplied.
-                content:
-                  application/problem+json:
-                    schema: { $ref: '#/components/schemas/Problem' }
-  behavior: >
-    Validates stock via Validate Order and rejects the order if any item
-    is short. On success, computes the total, persists an Order with
-    status pending, and emits Order Placed. The customer is taken from
-    the caller's identity, never from the request.
-  steps:
-    - calls: Validate Order
-    - calls: Calculate Total
-    - modifies: Order
-    - produces: Order Placed
+Guardrail: All Or Nothing
+  description: >
+    A change is persisted and announced only after every check has passed.
+    An alternative ending leaves no change and produces no Event, unless it
+    lists effects of its own.
 
-Function: Fetch Order
-  description: Returns a single order.
-  contract:
-    callers: [Customer, Support Staff, Components]
-    operation:
-      OpenAPI:
-        /{id}:
-          get:
-            operationId: fetchOrder
-            parameters:
-              - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-            responses:
-              '200':
-                description: The order as stored.
-                content:
-                  application/json:
-                    schema: { $ref: '#/components/schemas/Order' }
-              '404':
-                description: No such order, or not visible to this caller.
-                content:
-                  application/problem+json:
-                    schema: { $ref: '#/components/schemas/Problem' }
-      gRPC: |
-        rpc GetOrder(GetOrderRequest) returns (Order);
-        message GetOrderRequest { string id = 1; }
-  behavior: Returns the order as stored.
-  steps:
-    - reads: Order
-
-Function: Cancel Own Order
-  description: Lets a customer cancel an order that hasn't shipped.
-  contract:
-    callers: [Customer]
-    operation:
-      OpenAPI:
-        /{id}/cancel:
-          post:
-            operationId: cancelOwnOrder
-            parameters:
-              - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-            responses:
-              '200':
-                description: The order is now cancelled.
-                content:
-                  application/json:
-                    schema: { $ref: '#/components/schemas/Order' }
-              '404':
-                description: No such order among the customer's own.
-                content:
-                  application/problem+json:
-                    schema: { $ref: '#/components/schemas/Problem' }
-              '409':
-                description: Already shipped, or already cancelled.
-                content:
-                  application/problem+json:
-                    schema: { $ref: '#/components/schemas/Problem' }
-  behavior: >
-    Allowed only while status is pending or confirmed. Sets status to
-    cancelled and emits Order Cancelled.
-  steps:
-    - reads: Order
-    - modifies: Order
-    - produces: Order Cancelled
-
-Function: Cancel Order for Customer
-  description: Lets support staff cancel any order, with a reason.
-  contract:
-    callers: [Support Staff]
-    operation:
-      OpenAPI:
-        /{id}/cancel:
-          post:
-            operationId: cancelOrderForCustomer
-            parameters:
-              - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-            requestBody:
-              required: true
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    required: [reason]
-                    properties:
-                      reason: { type: string, minLength: 1, maxLength: 500 }
-            responses:
-              '200':
-                description: The order is now cancelled.
-                content:
-                  application/json:
-                    schema: { $ref: '#/components/schemas/Order' }
-              '404':
-                description: No such order.
-                content:
-                  application/problem+json:
-                    schema: { $ref: '#/components/schemas/Problem' }
-              '409':
-                description: Already cancelled.
-                content:
-                  application/problem+json:
-                    schema: { $ref: '#/components/schemas/Problem' }
-  behavior: >
-    Allowed at any status except cancelled. The reason is stored on the
-    Order. Sets status to cancelled and emits Order Cancelled.
-  steps:
-    - reads: Order
-    - modifies: Order
-    - produces: Order Cancelled
-
-Function: Validate Order
-  description: Checks that every item on the order is in stock.
-  steps:
-    - uses: Check Stock
-
-Function: Calculate Total
-  description: Computes the order total from its line items.
-  behavior: Sum of quantity × unit price per line item; no discounts or tax.
+Guardrail: Own Orders Only
+  description: >
+    Through the Customer contract, a caller can read or change only orders
+    whose customerId matches their own identity. Other orders end as
+    Not Found, so their existence isn't revealed.
 
 DataObject: Order
   description: A customer's order, from placement through fulfillment.
   schema:
     id: uuid
     customerId: string
-    items: LineItem[1..]
+    items: Line Item[1..]
     total: decimal
     status: enum(pending, confirmed, shipped, cancelled)
     cancellationReason: string?
-    LineItem: { productId: string, quantity: integer, unitPrice: decimal }
+    Line Item: { productId: string, quantity: integer, unitPrice: decimal }
 
 Event: Order Placed
   description: A customer's order was accepted and persisted.
@@ -1088,87 +1061,222 @@ Event: Order Cancelled
     orderId: uuid
     reason: string?
 
-Guardrail: Own Orders Only
-  description: >
-    Through the Customer contract, a caller can read or change only orders
-    whose customerId matches their own identity. Other orders are reported
-    as Not Found, so their existence isn't revealed.
+Component: Order Service
+  description: Owns the order lifecycle from placement to cancellation.
+  guardrails: [All Or Nothing]
+  contract:
+    Customer:
+      description: Customers placing, tracking and cancelling their own orders via web and mobile.
+      binding: { style: OpenAPI, base: /v1/orders, auth: customer token, errors: RFC 7807 }
+      guardrails: [Own Orders Only]
+      functions:
+        Place Order:
+          call: POST /
+          request:
+            items: "Order.Line Item { productId, quantity }[1..]"
+          responses:
+            Placed:            { code: 201, body: "Order { id, items, total, status }" }
+            Out Of Stock:      { code: 409, body: { shortItems: "{ productId: string, missing: integer }[1..]" } }
+            Below Minimum:     422
+            Stock Unavailable: 503
+        Fetch Order:
+          call: GET /{id}
+          request: { id: uuid }
+          responses:
+            Found:     { code: 200, body: "Order { id, items, total, status }" }
+            Not Found: 404
+        Cancel Own Order:
+          call: POST /{id}/cancel
+          request: { id: uuid }
+          responses:
+            Cancelled:         { code: 200, body: "Order { id, status }" }
+            Already Shipped:   409
+            Already Cancelled: 409
+            Not Found:         404
+
+    Support Staff:
+      description: Staff viewing and cancelling orders on a customer's behalf.
+      binding: { style: OpenAPI, base: /ops/v1/orders, auth: staff SSO, errors: RFC 7807 }
+      functions:
+        Fetch Order:
+          call: GET /{id}
+          request: { id: uuid }
+          responses:
+            Found:     { code: 200, body: Order }
+            Not Found: 404
+        Cancel Order for Customer:
+          call: POST /{id}/cancel
+          request:
+            id: uuid
+            reason: string
+          responses:
+            Cancelled:         { code: 200, body: Order }
+            Already Cancelled: 409
+            Not Found:         404
+
+    Components:
+      description: Other Components reading orders.
+      binding: { style: gRPC, service: orders.v1.OrderService, auth: mTLS service identity }
+      functions:
+        Fetch Order:
+          call: GetOrder
+          request: { id: uuid }
+          responses:
+            Found:     { code: OK, body: Order }
+            Not Found: NOT_FOUND
+
+Function: Place Order
+  description: Accepts a new order, checks it, and creates it.
+  steps:
+    - calls: Validate Order
+      on: { Short: Out Of Stock, Stock Unknown: Stock Unavailable }
+    - calls: Calculate Total
+    - modifies: Order
+    - produces: Order Placed
+  result: Placed
+  alternatives:
+    Out Of Stock: Some items can't be supplied in the requested quantity.
+    Stock Unavailable: Stock couldn't be checked right now.
+    Below Minimum: The order total is under $1.00.
+  behavior: The order is persisted with status pending, for the customer who called.
+  requirements: [Minimum Order Value]
+
+Function: Validate Order
+  description: Checks every item of the new order against stock, and reports which are short.
+  steps:
+    - uses: Inventory Service / Check Stock
+      on: { Short: Short, Unreachable: Stock Unknown }
+  result: All Available
+  alternatives:
+    Short: Some items have less stock than ordered.
+    Stock Unknown: Inventory Service couldn't be reached.
+
+Function: Calculate Total
+  description: Computes the order total from its line items.
+  result: Calculated
+  behavior: Sum of quantity × unit price per line item; no discounts or tax.
+
+Function: Fetch Order
+  description: Returns a single order.
+  steps:
+    - reads: Order
+  result: Found
+  alternatives:
+    Not Found: No order has this id, or the caller may not see it.
+
+Function: Cancel Own Order
+  description: Lets a customer cancel an order that hasn't shipped.
+  steps:
+    - reads: Order
+    - modifies: Order
+    - produces: Order Cancelled
+  result: Cancelled
+  alternatives:
+    Not Found: No order with this id belongs to the customer.
+    Already Shipped: The order has already shipped.
+    Already Cancelled: The order was cancelled earlier.
+
+Function: Cancel Order for Customer
+  description: Lets support staff cancel any order, with a reason.
+  steps:
+    - reads: Order
+    - modifies: Order
+    - produces: Order Cancelled
+  result: Cancelled
+  alternatives:
+    Not Found: No order has this id.
+    Already Cancelled: The order was cancelled earlier.
+  behavior: The reason is stored on the Order.
 ```
 
-The operations refer to data the way their own spec would —
-`#/components/schemas/Order` in OpenAPI, the `Order` message in gRPC —
-and in both cases the reference resolves to the `Order` Data Object:
-the bindings place Data Objects and their nested types in the assembled
-spec, so the shape of an order still has one home (principle 4).
-`Problem` comes from the Customer and Support Staff bindings' `errors:
-RFC 7807` key, not from any Function. `Fetch Order` carries two
-operations because its callers span two styles; that both describe the
-same lookup is a check the bindings make. The two cancel Functions share
-`/{id}/cancel` without colliding, because they sit on different
-contracts with different bases (check 3 in Section 3.3).
+The Functions carry no paths, codes or payloads; the contracts carry no
+business rules. `Place Order` never mentions a customer id: it works
+with the caller's identity, which the Customer contract's `auth`
+establishes (Section 3.3). The two cancel Functions share `POST
+/{id}/cancel` without colliding, because they sit on different contracts
+with different bases. `All Or Nothing` sits on the Component, so every
+alternative of every Function leaves the order untouched unless it says
+otherwise.
 
-**Drilling into an Actor edge:** `Support Staff → Order Service`
-summarizes Function-level edges that are derived from the record, not
-drawn by hand:
-
-```mermaid
-graph LR
-    Staff([Actor: Support Staff])
-    subgraph OrderSvc [Component: Order Service]
-        FetchOrder["Function: Fetch Order<br/>· Customer, Support Staff, Components"]:::ext
-        CancelFor["Function: Cancel Order for Customer<br/>· Support Staff"]:::ext
-    end
-    Staff -->|uses| FetchOrder
-    Staff -->|uses| CancelFor
-    classDef ext stroke-width:3px
-```
-
-**Drilling into the dependency:** the `depends-on` edge to Inventory is
-a Context-view summary. If we needed to know *why*, the Functionality
-view underneath it might look like this:
-
-```mermaid
-graph LR
-    subgraph OrderSvc [Component: Order Service]
-        ValidateOrder[Function: Validate Order]
-    end
-    subgraph Inventory [Component: Inventory Service]
-        CheckStock["Function: Check Stock<br/>· Components"]:::ext
-    end
-    ValidateOrder -->|uses| CheckStock
-    classDef ext stroke-width:3px
-```
+**The neighbours, as far as the diagram touches them:**
 
 ```yaml
-Function: Check Stock          # on Inventory Service, whose Components contract is gRPC
-  description: Reports whether requested quantities are available.
+DataObject: Stock                          # Inventory Service
+  description: Quantity on hand per product.
+  schema: { productId: string, onHand: integer, reserved: integer }
+
+Component: Inventory Service
+  guardrails: [All Or Nothing]
   contract:
-    callers: [Components]
-    operation:
-      gRPC: |
-        rpc CheckStock(CheckStockRequest) returns (CheckStockResponse);
-        message CheckStockRequest  { repeated LineItem items = 1; }
-        message CheckStockResponse { bool available = 1; repeated LineItem short_items = 2; }
+    Components:
+      description: Other Components checking and reserving stock.
+      binding: { style: gRPC, service: inventory.v1.InventoryService, auth: mTLS service identity }
+      functions:
+        Check Stock:
+          call: CheckStock
+          request:
+            items: "{ productId: string, quantity: integer }[1..]"
+          responses:
+            Available: OK
+            Short:     { code: OK, body: { shortItems: "{ productId: string, missing: integer }[1..]" } }
+
+Function: Check Stock
+  description: Reports whether requested quantities are available.
   steps:
     - reads: Stock
+  result: Available
+  alternatives:
+    Short: Some items have less stock than requested.
+
+Function: Create Invoice                   # Billing Service
+  description: Issues an invoice for a newly placed order.
+  steps:
+    - consumes: Order Placed
+    - uses: Order Service / Fetch Order
+      on: { Not Found: Order Missing, Unreachable: Deferred }
+    - modifies: Invoice
+  result: Invoiced
+  alternatives:
+    Order Missing:
+      when: The order no longer exists.
+      effects:
+        - produces: Invoice Failed
+    Deferred: Order Service couldn't be reached; the Event is processed again later.
 ```
 
-`Validate Order` — one specific Function inside Order Service — is what
-actually drives the dependency, not the Component as a whole. It names
-no contract: as a Function of another Component, it can only go through
-Inventory's `Components` contract, which `Check Stock` lists. That
-precision is optional: the diagram above stands on its own without it.
-`Check Stock` reports short stock in its response, not as an error: an
-order that can't be filled is a successful answer to "is it
-available?", not a failure of the operation.
+`Check Stock` returns `OK` for both of its endings: a shortage is a
+successful answer to "is it available?", not a failure of the call.
+Inventory describes its own request rather than borrowing Order
+Service's line item — each Component describes its own boundary.
+`Create Invoice` shows the other side of `Unreachable`: when Order
+Service can't be reached, the business answer is to try again later,
+not to fail the invoice.
 
-**Drilling into the event:** the same optional precision applies to
-`Order Placed`. At Context level, Order Service `produces` it and
-Inventory `consumes` it — that's the whole story on the diagram above.
-The Functionality-view chain underneath, on Inventory's side, is the one
-Section 3.4 showed: `Reserve Stock` is the specific Function reacting to
-`Order Placed`, and `Stock Reserved` is a second Event the one-page
-diagram never had to show.
+**Tracing Place Order.** The trace view of Section 3.2, generated from
+these records for the Customer contract:
+
+```mermaid
+graph LR
+    PO[Place Order] -->|calls| VO[Validate Order]
+    VO -->|uses| CS["Inventory Service /<br/>Check Stock"]
+    CS -->|Available| CT[Calculate Total]
+    CT --> M[modifies Order] --> P[produces Order Placed] --> OK(["Placed · 201"])
+    CS -->|Short| OOS(["Out Of Stock · 409"])
+    CS -->|Unreachable| SU(["Stock Unavailable · 503"])
+    PO -.->|"total under $1.00<br/>(All Or Nothing)"| BM(["Below Minimum · 422"])
+```
+
+Endings reached through `on` sit at a fixed point on the path — a
+shortage reported by `Check Stock` becomes `Validate Order`'s *Short*,
+which becomes `Place Order`'s *Out Of Stock* and a 409. `Place Order`'s
+own alternative, `Below Minimum`, is drawn as an exit from the Function
+as a whole, its position governed by the guardrail.
+
+**Drilling into the event:** at Context level, Order Service `produces`
+`Order Placed` and Inventory `consumes` it. The Functionality-view chain
+underneath, on Inventory's side, is the one Section 3.4 showed: `Reserve
+Stock` is the specific Function reacting to `Order Placed`, and `Stock
+Reserved` is a second Event the one-page diagram never had to show.
 
 ---
 
@@ -1192,25 +1300,43 @@ the evidence in [`contour-experiments.md`](contour-experiments.md)
   element and a relation by folding Interface into Function and
   Component; whether eight relationship types are sufficient for complex, multi-directional
   data-flow scenarios is untested.
-- **`steps` covers the straight line only.** Branching and parallelism
-  ("these two run at once," "only call Calculate Total if validation
-  passed") are outside the metamodel, as are Data Object state
-  transitions (Section 3.4). Experiment 3 is the first evidence that
-  real systems need conditional steps: three of its six behavioral
-  defects were branch structure the list could not hold (Experiments
-  §3). Whether to extend `steps`, or to require such branches as named
-  Requirements with their conditions spelled out, is now a live
-  question.
-- **One Function, one shape and one set of rules.** A Function reached
-  through several contracts must offer the same operation shape and the
-  same behavior through each (Section 3.3). A capability whose shape or rules differ per audience
-  becomes several Functions, which a business reader may find redundant
-  on the diagram, and naming them well takes effort. The rule is also
-  easy to break silently: a modeler can list several contracts and hide
-  per-audience rules in `behavior` prose ("if the caller is staff…").
+- **Endings are named, but not placed.** Experiment 3 is the first
+  evidence that real systems need conditional structure: three of its
+  six behavioral defects were branches the record could not hold
+  (Experiments §3). v0.4 answers with outcomes (Section 3.3) — every way
+  a Function can end is named and explained, and a called Function's
+  ending can be mapped onto the caller's — but `steps` stays a straight
+  line. *Where* a Function's own condition is decided is left to
+  Guardrails such as `All Or Nothing` and to the implementer. Whether
+  that is precise enough for real legacy logic is untested; if it isn't,
+  the next step is to let a step name the endings decided after it.
+  Parallelism and Data Object state transitions (Section 3.4) remain out
+  of scope.
+- **One Function, one set of rules.** A Function listed by several
+  contracts must follow the same steps and reach the same outcomes for
+  every caller; only what each caller sends and sees may differ (Section
+  3.3). A capability whose rules differ per caller becomes several
+  Functions, which a business reader may find redundant on the diagram,
+  and naming them well takes effort. The rule is also easy to break
+  silently: a modeler can list a Function in several contracts and hide
+  per-caller rules in `behavior` prose ("if the caller is staff…").
   Nothing structural prevents that; a `behavior` that mentions a caller
-  type or a contract is a review signal that the Function should be
-  split.
+  is a review signal that the Function should be split.
+- **Data inside a Component is carried by context, not declared.** A
+  Function declares no inputs; it works with what its contract entry,
+  its Event or its caller provides (Section 3.3). That keeps Functions
+  short, but it means nothing checks that a private Function only relies
+  on data every caller has, or that a response body's content actually
+  comes from where the steps suggest — for example, that the short items
+  in `Place Order`'s 409 are the ones `Check Stock` reported. Data is
+  checked where it crosses a boundary, and only there.
+- **Shapes repeat across contracts.** Because requests and responses are
+  described where they cross, the same shape can appear in several
+  contract entries — `{ id: uuid }` three times for `Fetch Order`, the
+  short-items shape in both Order Service's and Inventory's contracts.
+  Each copy describes a different boundary, so the repetition is honest,
+  but a change to one shape touches several places. A Component-level
+  set of named shapes would remove it, at the cost of another concept.
 - **One contract per caller, per Component.** Because a contract is
   keyed by its Actor, an Actor reaches a Component in exactly one way.
   Two Actors with identical access must be modeled as one role, and one
@@ -1224,17 +1350,8 @@ the evidence in [`contour-experiments.md`](contour-experiments.md)
   slots and what a binding must provide (Section 3.3), not any binding
   itself. Whether a record generates a correct spec therefore depends on
   bindings that exist outside this paper and are not yet written. Some
-  styles sit uneasily in the model: RMI's operation is a method
+  styles sit uneasily in the model: an RMI `call` is a method
   signature, which brings the record close to code.
-- **Operations are written in each style's own format.** That lets an
-  existing spec's operations be pasted into a record unchanged, but it
-  also means a Function's operation is only as readable as its style:
-  an OpenAPI fragment is precise for a developer or an LLM and opaque to
-  a non-developer, who has to rely on the Function's `description` and
-  `behavior`. And when a Function's callers span two styles, its two
-  operations restate one shape twice; Contour leaves it to the bindings
-  to check they agree, so that check is only as strong as the bindings
-  that implement it.
 - **Events are outside the contract model.** A Component's Events still
   carry their own `schema` and name no contract, so how a Component
   publishes them (transport, envelope) has no structured home yet, and
@@ -1274,23 +1391,15 @@ the evidence in [`contour-experiments.md`](contour-experiments.md)
   defects (Experiments §3, §4). Answering that isn't a precondition for
   the change-propagation or build-from-spec claims the rest of the
   paper depends on.
-- **No failure policy on a `uses` edge.** A `uses` relation says that a
-  Function depends on another Component's external Function. It does
-  not say what the using Function does when that call fails outright —
-  as distinct from a declared failure response, which the target's
-  `contract.operation` now names. Experiment
-  3 needed that decision for every integration client and had to infer
-  it (Experiments §3). Whether it belongs in a Requirement or Guardrail
-  on the using Function, or in the edge's own record, is open.
 - **No distinction between a current and a target record.** A record can
   describe a Component as it is or as it is meant to become, and legacy
   extraction needs both. Experiment 3's record described a target
   Component that did not yet exist as its own lifecycle, and the
   decomposition status of its dependencies had to be carried outside
   the metamodel (Experiments §3).
-- **Existing consumers aren't a first-class constraint.** An Event or
-  external Function whose `schema` or `contract.operation` is already
-  bound to live consumers constrains
+- **Existing consumers aren't a first-class constraint.** An Event
+  schema or a contract's requests and responses already bound to live
+  consumers constrain
   the Component's own choices, such as identifier type. Nothing in the
   record marks that constraint, so in Experiment 3 it surfaced only when
   a real consumer schema was checked (Experiments §3).
@@ -1323,11 +1432,13 @@ They say it holds for behavior only on small codebases. On real legacy
 logic, the record fixed the Component's shape reliably. Its prose did
 not carry conditional and time-dependent behavior precisely enough to
 build from without reading the source directly, and in one case it
-summarized that behavior wrongly. The other open decisions — what
-happens when a dependency fails, compatibility with consumers that
-already exist, and whether a record describes the current or the target
-system — look closable with conventions. How much branching behavior a
-record should carry is the harder question.
+summarized that behavior wrongly. v0.4 responds by giving every
+Function's endings, and what a failed call to another Component means,
+a structured place in the record; whether that carries real branching
+behavior precisely enough is the next thing to test. The other open
+decisions — compatibility with consumers that already exist, and whether
+a record describes the current or the target system — look closable
+with conventions.
 Whether "enough detail to guide a change" and "small enough to stay
 usable" continue to coexist as the Component grows is what the next
 experiments (the roadmap in `contour-experiments.md`) are meant to find
@@ -1348,9 +1459,9 @@ either:
 | Scope | Whole enterprise (business, application, technology, motivation) | One software system's structure | One Component and its immediate environment |
 | Zoom levels | Layers (business/application/technology) | Separate diagram types (Context, Container, Component, Code, Dynamic) | Two views of one model (Context, Functionality) — Section 3.2 |
 | Relationships | 10+ formal types with precise semantics | Informal, unlabeled by convention | 8 relationship types, one vocabulary partitioned across both views |
-| Service concept | A dedicated element (Business/Application Service, separate from Process/Function) | Not modeled explicitly | No separate type — a Function that names a contract |
+| Service concept | A dedicated element (Business/Application Service, separate from Process/Function) | Not modeled explicitly | No separate type — a Function that a contract lists |
 | Interface concept | A dedicated element (Application Interface) | Not modeled explicitly | No element — a record-tier contract on the Component, keyed by the Actor it serves, with the technology in its `binding` |
-| Sequence/ordering | Not a core concern | Dynamic diagram (separate, numbered arrows) | `steps` list on a Function's record (Section 3.3) |
+| Sequence/ordering | Not a core concern | Dynamic diagram (separate, numbered arrows) | `steps`, `result` and `alternatives` on a Function's record, and a generated trace view (Sections 3.2, 3.3) |
 | Tooling | Formal metamodel, exchange format, certified tools | Informal; Structurizr DSL as one implementation | Tool-agnostic (plain diagrams or simple YAML) |
 
 A few points worth stating plainly rather than leaving to the table:
@@ -1418,48 +1529,47 @@ it, never the other way round (Section 3.3).
 ## Changelog
 
 - **v0.4** — Removed the Interface element and the `exposes` relation:
-  six elements, eight relations. Externality is still derived, now from
-  a Function declaring a **contract** against its Component's contracts
-  — record-tier, never drawn, and keyed by who they serve: an Actor, or
-  the reserved key `Components` for other Components' Functions, so a
-  Component has at most one contract per caller. Each Component contract
-  has a `description` and a `binding` block whose one core key, `style`,
-  names the binding that interprets the rest. A Function's `contract`
-  holds `callers` (those keys) and `operation`, given once per style in
-  that style's own format — an OpenAPI path and Operation Object, a gRPC
-  `rpc` definition — so existing specs can be pasted in; the format is
-  defined by the style's binding, not by Contour. A Function keeps one
-  operation shape and one behavior across its callers; differing rules
-  per caller mean separate Functions. `schema` now belongs to Data
-  Objects and Events only. Section 3.3 gained the core type notation
-  for those schemas (primitives, `enum`, `T[]`, `T[1..]`, `T?`,
-  references, nested types), the contract model, a
-  *Bindings* subsection listing what a binding — maintained outside the
-  paper — must define, and five style-neutral consistency checks. A
-  contract's spec (OpenAPI, AsyncAPI, protobuf) is now assembled from
-  the record, never linked as its authority; Data Object and Event
-  schemas may still link existing specs. `uses` now targets an external
-  Function or, from an Actor, a Component; the contract it goes through
-  is never declared but follows from the caller. `consumes` is now
-  allowed as a Function's first step, marking it as subscribed to that
-  Event; a Function is started by an Event or by a caller, not both
-  (check 5), and 3.4's `Reserve Stock` now shows its record. Actor
-  redefined as a role with distinct access. `uses` now appears at both
-  levels (3.1). Naming (3.5) gained rules for Functions split by
-  audience and for Actors as roles. Notation (4): Interface lollipop
-  removed; external Functions have a heavy border and carry their
-  callers; an Actor is drawn with one unlabeled `uses` edge to the
-  Component; containment may stand in for `performs`. Section 5
-  rewritten around three contracts, a Function reached through all three
-  and in two styles, a cancellation split by caller, and full records
-  with OpenAPI and gRPC operations. Section 6: replaced "same function,
-  differently-shaped interfaces" with "one Function, one shape and one
-  set of rules"; added one-contract-per-caller, binding-precision,
-  style-native-operations and Events-outside-contracts limitations;
-  updated failure-policy and existing-consumers wording. Appendix:
-  element and relation counts, an Interface-concept row, the ArchiMate
-  Contract overlap, the origin of "binding", and the direction between
-  record and contract specs. Events are unchanged in this version.
+  six elements, eight relations. Split the record into two concerns: a
+  **Function** says, in business terms only, what happens and how it can
+  end; its **Component** says how it is reached. Components gained
+  `contract`, keyed by who reaches them — an Actor, or the reserved key
+  `Components` for other Components' Functions — each with a
+  `description`, a `binding` block whose one core key, `style`, names
+  the binding that interprets the rest, and per Function a `call`, an
+  inline `request`, and `responses` mapping every outcome to a code and
+  optional body. A Function is external exactly when a contract lists
+  it. Functions gained outcomes: `result` (the main path's ending) and
+  `alternatives` (every other ending, one sentence each, or `when` plus
+  `effects` when the ending does something). `steps` gained `consumes`
+  as a first step (an Event-triggered Function), qualified `uses`
+  targets (`Component / Function`), and `on` mappings from a callee's
+  endings to the caller's, with a built-in `Unreachable` that every
+  `uses` must map. Data Object narrowed to state a Component keeps;
+  requests and responses are inline shapes in the contract, in a new
+  core type notation (primitives, `enum`, `T[]`, `T[1..]`, `T?`,
+  references, nested types, projections, inline shapes). A Function
+  declares no inputs: it works with its contract entry's request and the
+  caller's identity, its Event's schema, or its caller's context. Added
+  a *Bindings* subsection (what a binding, maintained outside the
+  paper, must define), the rule that a contract spec is assembled from
+  the record rather than linked, and eight style-neutral consistency
+  checks. Section 3.2 gained half-open neighbours on the one-page
+  diagram and a generated trace view. Actor redefined as a role with
+  distinct access; `uses` now runs Actor → Component as well as
+  Function → Function. Naming (3.5) gained rules for outcomes, Functions
+  split by caller, and Actors as roles. Section 3.6 gained the `All Or
+  Nothing` guardrail as the way ordering rules are stated. Notation (4):
+  Interface lollipop removed; external Functions have a heavy border and
+  carry their callers; one `uses` edge per Actor. Section 5 rewritten
+  around three contracts, a Function reached by all three, a
+  cancellation split by caller, a half-open diagram, full records and a
+  trace. Section 6: replaced the `steps`, "same function,
+  differently-shaped interfaces" and failure-policy bullets; added
+  one-contract-per-caller, binding-precision, data-by-context,
+  repeated-shapes and Events-outside-contracts limitations. Appendix:
+  counts, an Interface-concept row, the ArchiMate Contract overlap, the
+  origin of "binding", and the direction between record and contract
+  specs. Events are otherwise unchanged in this version.
 - **v0.3** — Restructured into two documents. This paper now holds the
   concept only: motivation, design principles, metamodel, notation,
   worked example, limitations, and conclusion. Experiment results
