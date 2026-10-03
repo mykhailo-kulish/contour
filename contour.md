@@ -341,7 +341,7 @@ separate drill-down.
 
 **A trace view is generated, never drawn.** Following one Function's
 `steps` across Components — through each `calls` and `uses`, branching
-at every `on` mapping (Section 3.3) — yields every path the Function can
+at every `becomes` mapping (Section 3.3) — yields every path the Function can
 take and the ending each path reaches, with the response a caller gets
 for it from the Component's contract. It needs no data beyond the
 records, so it is a view, not a diagram to maintain; Section 5 shows
@@ -378,7 +378,7 @@ than per element:
 | **any element** | `requirements` | Optional list of Requirement names this element must satisfy (Section 3.6) |
 | | `guardrails` | Optional list of Guardrail names this element must stay inside (Section 3.6) |
 | **Function** | `description` | Plain-language summary of the business case the Function handles |
-| | `steps` | The main path, in order, as relationship verbs; where a called Function's ending changes this one's, an `on` mapping says how |
+| | `steps` | The main path, in order, as relationship verbs; where a called Function's ending changes this one's, a `becomes` mapping says how |
 | | `result` | The name of the ending the main path reaches |
 | | `alternatives` | Every other way the Function can end, each named and explained in one sentence |
 | | `behavior` | Business rules that the steps and endings don't express |
@@ -400,7 +400,7 @@ Function: Place Order
   description: Accepts a new order, checks it, and creates it.
   steps:
     - calls: Validate Order
-      on: { Short: Out Of Stock, Stock Unknown: Stock Unavailable }
+      becomes: { Short: Out Of Stock, Stock Unknown: Stock Unavailable }
     - calls: Calculate Total
     - modifies: Order
     - produces: Order Placed
@@ -415,7 +415,7 @@ Function: Validate Order
   description: Checks every item of the new order against stock.
   steps:
     - uses: Inventory Service / Check Stock
-      on: { Short: Short, Unreachable: Stock Unknown }
+      becomes: { Short: Short, Unreachable: Stock Unknown }
   result: All Available
   alternatives:
     Short: Some items have less stock than ordered.
@@ -456,16 +456,17 @@ for those verbs are a **derived, unordered summary** of the steps — the
 same rollup as principle 5 (Context summarizes Functionality), applied
 one level further down (record summarizes into diagram).
 
-**`on`: when a called Function's ending changes this one's.** A `calls`
-or `uses` step may map the callee's endings onto the caller's own
-alternatives: `on: { Short: Out Of Stock }` says that when `Validate
-Order` ends *Short*, `Place Order` ends *Out Of Stock*. A callee ending
-the step doesn't map continues the main path. Every `uses` also maps
-**`Unreachable`** — the built-in ending of any call to another Component
-that couldn't be completed — so each cross-Component call states, in
-business terms, what a failed call means for the caller: end with an
-alternative of its own, or carry on. Retries and timeouts are technical
-and belong to the contract's binding (below), never to a step.
+**`becomes`: when a called Function's ending changes this one's.** A
+`calls` or `uses` step may map the callee's endings onto the caller's
+own alternatives: `becomes: { Short: Out Of Stock }` reads *Short
+becomes Out Of Stock* — when `Validate Order` ends *Short*, `Place
+Order` ends *Out Of Stock*. A callee ending that doesn't become anything
+continues the main path. Every `uses` also maps **`Unreachable`** — the
+built-in ending of any call to another Component that couldn't be
+completed — so each cross-Component call states, in business terms,
+which of the caller's own alternatives a failed call becomes. Retries
+and timeouts are technical and belong to the contract's binding
+(below), never to a step.
 
 `steps` is deliberately a straight line, not a control-flow language:
 each step either continues or ends the Function in one of its endings,
@@ -497,8 +498,8 @@ test per outcome.
     Deferred: Order Service couldn't be reached; the Event is processed again later.
 ```
 
-An alternative is reached either by its own condition, or by an `on`
-mapping from a called Function — in which case its sentence restates, in
+An alternative is reached either by its own condition, or by a
+`becomes` mapping from a called Function — in which case its sentence restates, in
 the caller's terms, what the callee reported. An alternative is not
 necessarily a failure: `Check Stock` ending *Short* is a successful
 answer to "is it in stock?". But it is always a *business* ending:
@@ -696,8 +697,8 @@ checks are style-neutral; each binding adds its own:
    Objects, their nested types, or projections of them.
 5. A `uses` step names the Component that performs the target, and that
    Component's `Components` contract lists the target.
-6. `on` keys are outcomes of the callee, or `Unreachable` on a `uses`;
-   `on` values are alternatives of the calling Function.
+6. `becomes` keys are outcomes of the callee, or `Unreachable` on a
+   `uses`; `becomes` values are alternatives of the calling Function.
 7. Every `uses` step maps `Unreachable`.
 8. `consumes` appears only as the first step, at most once, on an Event
    another Component produces; a Function that has it is listed by no
@@ -1133,7 +1134,7 @@ Function: Place Order
   description: Accepts a new order, checks it, and creates it.
   steps:
     - calls: Validate Order
-      on: { Short: Out Of Stock, Stock Unknown: Stock Unavailable }
+      becomes: { Short: Out Of Stock, Stock Unknown: Stock Unavailable }
     - calls: Calculate Total
     - modifies: Order
     - produces: Order Placed
@@ -1149,7 +1150,7 @@ Function: Validate Order
   description: Checks every item of the new order against stock, and reports which are short.
   steps:
     - uses: Inventory Service / Check Stock
-      on: { Short: Short, Unreachable: Stock Unknown }
+      becomes: { Short: Short, Unreachable: Stock Unknown }
   result: All Available
   alternatives:
     Short: Some items have less stock than ordered.
@@ -1237,7 +1238,7 @@ Function: Create Invoice                   # Billing Service
   steps:
     - consumes: Order Placed
     - uses: Order Service / Fetch Order
-      on: { Not Found: Order Missing, Unreachable: Deferred }
+      becomes: { Not Found: Order Missing, Unreachable: Deferred }
     - modifies: Invoice
   result: Invoiced
   alternatives:
@@ -1270,7 +1271,7 @@ graph LR
     PO -.->|"total under $1.00<br/>(All Or Nothing)"| BM(["Below Minimum · 422"])
 ```
 
-Endings reached through `on` sit at a fixed point on the path — a
+Endings reached through `becomes` sit at a fixed point on the path — a
 shortage reported by `Check Stock` becomes `Validate Order`'s *Short*,
 which becomes `Place Order`'s *Out Of Stock* and a 409. `Place Order`'s
 own alternative, `Below Minimum`, is drawn as an exit from the Function
@@ -1546,7 +1547,7 @@ it, never the other way round (Section 3.3).
   `alternatives` (every other ending, one sentence each, or `when` plus
   `effects` when the ending does something). `steps` gained `consumes`
   as a first step (an Event-triggered Function), qualified `uses`
-  targets (`Component / Function`), and `on` mappings from a callee's
+  targets (`Component / Function`), and `becomes` mappings from a callee's
   endings to the caller's, with a built-in `Unreachable` that every
   `uses` must map. Data Object narrowed to state a Component keeps;
   requests and responses are inline shapes in the contract, in a new

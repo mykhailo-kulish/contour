@@ -107,7 +107,7 @@
       ]
     },
     "step": {
-      "description": "One entry of a Function's steps (Section 3.3): exactly one step verb naming its target, plus `on` on a `calls` or `uses` step.",
+      "description": "One entry of a Function's steps (Section 3.3): exactly one step verb naming its target, plus `becomes` on a `calls` or `uses` step.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -137,14 +137,14 @@
           "minLength": 1,
           "description": "An Event of the same Component."
         },
-        "on": {
+        "becomes": {
           "type": "object",
           "minProperties": 1,
           "additionalProperties": {
             "type": "string",
             "minLength": 1
           },
-          "description": "Maps the callee's outcomes to this Function's alternatives (Section 3.3). Unmapped outcomes continue the main path. On a `uses` step it must map `Unreachable`."
+          "description": "Maps the callee's outcomes to this Function's alternatives (Section 3.3). An outcome that doesn't become anything continues the main path. On a `uses` step it must map `Unreachable`."
         }
       },
       "oneOf": [
@@ -168,9 +168,9 @@
           }
         },
         {
-          "required": ["uses", "on"],
+          "required": ["uses", "becomes"],
           "properties": {
-            "on": {
+            "becomes": {
               "required": ["Unreachable"]
             }
           },
@@ -208,7 +208,7 @@
                 "required": ["produces"]
               },
               {
-                "required": ["on"]
+                "required": ["becomes"]
               }
             ]
           }
@@ -230,7 +230,7 @@
                 "required": ["produces"]
               },
               {
-                "required": ["on"]
+                "required": ["becomes"]
               }
             ]
           }
@@ -252,7 +252,7 @@
                 "required": ["modifies"]
               },
               {
-                "required": ["on"]
+                "required": ["becomes"]
               }
             ]
           }
@@ -260,7 +260,7 @@
       ]
     },
     "effect": {
-      "description": "One thing an alternative ending does instead of the main path (Section 3.3): a single step verb, without `on`.",
+      "description": "One thing an alternative ending does instead of the main path (Section 3.3): a single step verb, without `becomes`.",
       "type": "object",
       "minProperties": 1,
       "maxProperties": 1,
