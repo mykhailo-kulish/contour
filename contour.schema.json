@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mykhailo-kulish.github.io/contour/contour.schema.json",
   "title": "Contour model",
-  "description": "A Contour specification in the framework's structured-record style (Section 3) with a nested ownership hierarchy: Components nest under their System (groups), and the elements a Component owns — functions, dataObjects, events — nest under that Component. A Component's contracts (Section 3.3) are keyed by the Actor they serve, or by the reserved key `Components`, and list the Functions reachable through them with their call, request and responses. Actors are top-level. Requirement and Guardrail definitions (Section 3.6) are top-level and referenced by name. Cross-boundary edges (groups, uses, consumes, references, dependsOn) and Function steps are inline by name. No IDs. Field names are camelCase.",
+  "description": "A Contour specification in the framework's structured-record style (Section 3) with a nested ownership hierarchy: Components nest under their System (groups), and the elements a Component owns — functions, dataObjects, events — nest under that Component. A Component's contracts (Section 3.3) are keyed by the Actor they serve, or by the reserved key `Components`, and list the Functions reachable through them with their operation, request and responses. Actors are top-level. Requirement and Guardrail definitions (Section 3.6) are top-level and referenced by name. Cross-boundary edges (groups, uses, consumes, references, dependsOn) and Function steps are inline by name. No IDs. Field names are camelCase.",
   "type": "object",
   "additionalProperties": false,
   "minProperties": 1,
@@ -342,12 +342,12 @@
       "description": "How one Function is reached through one contract (Section 3.3).",
       "type": "object",
       "additionalProperties": false,
-      "required": ["call", "responses"],
+      "required": ["operation", "responses"],
       "properties": {
-        "call": {
+        "operation": {
           "type": "string",
           "minLength": 1,
-          "description": "How the caller invokes the Function, in the style's own terms; format defined by the binding."
+          "description": "What the caller invokes, in the style's own terms (e.g. \"GET /{id}\", \"GetOrder\"); format defined by the binding."
         },
         "request": {
           "$ref": "#/$defs/shape",

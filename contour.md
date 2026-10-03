@@ -556,7 +556,7 @@ Each contract carries:
   below).
 - **`functions`** — the Functions reachable through this contract, each
   with:
-  - **`call`** — how the caller invokes it, in the style's own terms
+  - **`operation`** — what the caller invokes, in the style's own terms
     (`POST /{id}/cancel`, `GetOrder`).
   - **`request`** — what the caller sends, in the core type notation.
   - **`responses`** — every outcome of the Function, each mapped to what
@@ -579,7 +579,7 @@ Component: Order Service
       guardrails: [Own Orders Only]
       functions:
         Fetch Order:
-          call: GET /{id}
+          operation: GET /{id}
           request: { id: uuid }
           responses:
             Found:     { code: 200, body: "Order { id, items, total, status }" }
@@ -589,15 +589,15 @@ Component: Order Service
       binding: { style: gRPC, service: orders.v1.OrderService, auth: mTLS service identity }
       functions:
         Fetch Order:
-          call: GetOrder
+          operation: GetOrder
           request: { id: uuid }
           responses:
             Found:     { code: OK, body: Order }
             Not Found: NOT_FOUND
 ```
 
-The keys after `style` in each `binding`, and the form of each `call`
-and code, belong to the style's binding, not to Contour.
+The keys after `style` in each `binding`, and the form of each
+`operation` and code, belong to the style's binding, not to Contour.
 
 **Requests and responses are described where they cross.** They are
 inline shapes, not Data Objects: they may reference the Component's own
@@ -614,6 +614,10 @@ customer may cancel only before shipment, support staff at any stage but
 with a reason — that is two business decisions, and so two Functions, by
 the rule in Section 3.6 that a business decision belongs to the Function
 that owns it.
+
+A Function `calls` another Function inside its Component; a caller
+outside it invokes an `operation` of a contract. The two words are kept
+apart on purpose.
 
 **Which contract a `uses` goes through is never declared; it follows
 from the caller.** An Actor reaches a Function through the contract keyed
@@ -654,7 +658,7 @@ generate from. A binding must define:
 1. **Binding keys** — which keys the `binding` block accepts besides
    `style`, and their allowed values (including how authentication is
    structured).
-2. **Call format** — what a valid `call` is, and how it combines with
+2. **Operation format** — what a valid `operation` is, and how it combines with
    the binding keys into a full address.
 3. **Request placement** — where each request field travels: path,
    query, body, header, or message field.
@@ -667,7 +671,7 @@ generate from. A binding must define:
 
 **The record is the authority; a contract spec is an output.** An
 OpenAPI, AsyncAPI or protobuf file for a contract is assembled from the
-record — the contract's binding keys, its calls, requests and
+record — the contract's binding keys, its operations, requests and
 responses, the Data Objects they refer to — or checked against it, the
 same way code is. A contract spec is never linked as the source of
 truth: one spec file spans many Functions, so linking it would give
@@ -687,7 +691,7 @@ checks are style-neutral; each binding adds its own:
    Function a contract lists is performed by that Component.
 2. Each listed Function's `responses` cover its `result` and every
    alternative, and only those.
-3. No two Functions share a `call` within one contract.
+3. No two Functions share an `operation` within one contract.
 4. Requests and response bodies reference only the Component's own Data
    Objects, their nested types, or projections of them.
 5. A `uses` step names the Component that performs the target, and that
@@ -785,7 +789,7 @@ stylistic afterthought:
   the technical means used to do it, the class it happens to map to, or
   the protocol it runs over. Protocol and transport belong to a
   contract's `binding`, and an operation or method name (`GetOrder`) to
-  the contract's `call` — never in the Function's name. Principle 7
+  the contract's `operation` — never in the Function's name. Principle 7
   applied to naming.
 - **Outcomes are named for the result, not the check.** "Placed",
   "Already Shipped", "Below Minimum" — not "Validation Failed" or "Error
@@ -1015,7 +1019,7 @@ Deployment nodes, infrastructure, and organizational elements are absent
 by design (principle 5).
 
 **The records behind the diagram.** The keys after `style` in each
-`binding`, and the form of each `call` and code, are illustrative —
+`binding`, and the form of each `operation` and code, are illustrative —
 what an OpenAPI or gRPC binding might define (Section 3.3):
 
 ```yaml
@@ -1071,7 +1075,7 @@ Component: Order Service
       guardrails: [Own Orders Only]
       functions:
         Place Order:
-          call: POST /
+          operation: POST /
           request:
             items: "Order.Line Item { productId, quantity }[1..]"
           responses:
@@ -1080,13 +1084,13 @@ Component: Order Service
             Below Minimum:     422
             Stock Unavailable: 503
         Fetch Order:
-          call: GET /{id}
+          operation: GET /{id}
           request: { id: uuid }
           responses:
             Found:     { code: 200, body: "Order { id, items, total, status }" }
             Not Found: 404
         Cancel Own Order:
-          call: POST /{id}/cancel
+          operation: POST /{id}/cancel
           request: { id: uuid }
           responses:
             Cancelled:         { code: 200, body: "Order { id, status }" }
@@ -1099,13 +1103,13 @@ Component: Order Service
       binding: { style: OpenAPI, base: /ops/v1/orders, auth: staff SSO, errors: RFC 7807 }
       functions:
         Fetch Order:
-          call: GET /{id}
+          operation: GET /{id}
           request: { id: uuid }
           responses:
             Found:     { code: 200, body: Order }
             Not Found: 404
         Cancel Order for Customer:
-          call: POST /{id}/cancel
+          operation: POST /{id}/cancel
           request:
             id: uuid
             reason: string
@@ -1119,7 +1123,7 @@ Component: Order Service
       binding: { style: gRPC, service: orders.v1.OrderService, auth: mTLS service identity }
       functions:
         Fetch Order:
-          call: GetOrder
+          operation: GetOrder
           request: { id: uuid }
           responses:
             Found:     { code: OK, body: Order }
@@ -1213,7 +1217,7 @@ Component: Inventory Service
       binding: { style: gRPC, service: inventory.v1.InventoryService, auth: mTLS service identity }
       functions:
         Check Stock:
-          call: CheckStock
+          operation: CheckStock
           request:
             items: "{ productId: string, quantity: integer }[1..]"
           responses:
@@ -1350,7 +1354,7 @@ the evidence in [`contour-experiments.md`](contour-experiments.md)
   slots and what a binding must provide (Section 3.3), not any binding
   itself. Whether a record generates a correct spec therefore depends on
   bindings that exist outside this paper and are not yet written. Some
-  styles sit uneasily in the model: an RMI `call` is a method
+  styles sit uneasily in the model: an RMI `operation` is a method
   signature, which brings the record close to code.
 - **Events are outside the contract model.** A Component's Events still
   carry their own `schema` and name no contract, so how a Component
@@ -1535,7 +1539,7 @@ it, never the other way round (Section 3.3).
   `contract`, keyed by who reaches them — an Actor, or the reserved key
   `Components` for other Components' Functions — each with a
   `description`, a `binding` block whose one core key, `style`, names
-  the binding that interprets the rest, and per Function a `call`, an
+  the binding that interprets the rest, and per Function an `operation`, an
   inline `request`, and `responses` mapping every outcome to a code and
   optional body. A Function is external exactly when a contract lists
   it. Functions gained outcomes: `result` (the main path's ending) and
