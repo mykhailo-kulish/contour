@@ -1,135 +1,89 @@
-# Contour v0.5 — working notes: specification and implementation
+# Contour v0.5 — working notes: one model, two directions
 
 Status: working draft. These notes test the v0.5 idea on a real model before
 the paper (`contour.md`) is rewritten. The paper on this branch is still v0.4.
 
 ## The idea
 
-A Contour model has two layers, written by different people for different
-reasons:
+A Contour model is **one model at one level**. Its elements — System, Actor,
+Function, Data Object, Event, Component, Interface — are peers; none is a
+layer above or below another. What varies is **where you start filling it
+in**:
 
-| | Specification (top-down) | Implementation (bottom-up) |
+| | Top-down | Bottom-up |
 |---|---|---|
-| Answers | What the System must do, and for whom | How it is built and reached |
-| Written by | Business owner, architect | Developers, or an LLM, from the specification |
-| Elements | System, Actor, Function, Data Object, Event | Component, Interface |
-| Record-tier | Requirements, Guardrails | Each element's `basis`: what it was derived from |
-| Technical detail | None | Bindings, operations, requests, responses |
-| File (contour-engine) | `contour-engine.spec.yaml` | `contour-engine.impl.yaml` |
+| Starts from | Business needs | Source code |
+| Filled in first | Actors and the Functions they need, Data Objects, Events, Requirements, Guardrails | Components (deployables), Interfaces (entry points), Functions (handlers), Data Objects (stores) |
+| Recovered later | Components and Interfaces — how the System is split and reached | Actors' needs, and the Requirements and Guardrails that explain the code's shape |
+| Typical use | Building a new System from a specification | Documenting or changing an existing one; legacy extraction |
 
-The specification is complete on its own: a non-developer can review all of
-it. The implementation never redefines anything the specification says — it
-references Functions, Data Objects and Events by name and only decides where
-they live and how they are reached.
+Both directions arrive at the same model. A model in progress is simply
+incomplete from one side, and the checker says what is missing and what the
+next step is from either direction.
 
-## Specification layer
+This fits the paper's claims. Building from a specification is the top-down
+direction run to completion; propagating a change into an existing codebase
+starts bottom-up (recover the model) and continues top-down (change the
+needs, then the code).
 
-Unchanged from v0.4: System, Function (`steps`, `result`, `alternatives`,
-`behavior`), Data Object, Event, Requirement, Guardrail.
+## What v0.5 adds to v0.4
 
-New: an **Actor declares the Functions it needs**, and the Requirements that
-say how it must be able to reach them, in business terms:
+- **An Actor declares the Functions it `needs`.** This is the record of the
+  Actor → Function `uses` edge. Where an Interface exists, the edge is
+  refined as Actor → Interface → Function — the same rollup as principle 5.
+  ```yaml
+  Actor: Modeler
+    needs: [Search Specifications, Retrieve Element, Store Element, …]
+    requirements: [Works In A Browser, Listings Are Paginated]
+  ```
+- **Interfaces belong to the System and are allocated to a Component**, not
+  owned by one by definition: an Interface names the Component that
+  `implementedBy`, and the Component lists it in `implements`. When the
+  Component implementing an Interface isn't the one performing its
+  Functions, the Interface names the internal Interface it goes `through`.
+- **Components and Interfaces carry a `rationale`**: the Actor needs,
+  Requirements, Guardrails, principles or allocation that explain why they
+  exist. Top-down, it records why something was derived; bottom-up, it
+  records the reason recovered for what the code already has.
+- **Components are optional.** A model with none says what the System does,
+  not yet how it is split. `performs`, `owns` and `produces` are read as
+  allocation of the System's Functions, Data Objects and Events.
 
-```yaml
-Actor: Modeler
-  needs: [Search Specifications, Retrieve Element, Store Element, …]
-  requirements: [Works In A Browser, Listings Are Paginated]
-  guardrails: [Diagrams Are Shown As Rendered]
+## contour-engine as one model
 
-Actor: AI Agent
-  needs: [Search Specifications, Retrieve Element, Store Element, …]
-  requirements: [Reaches The System As Tools]
-```
+`contour-engine.yaml` on this branch is the v0.5 model:
 
-`needs` is the record of the `uses` relation at specification level: Actor →
-Function. The implementation refines each such edge into Actor → Interface →
-Function, the same rollup as principle 5.
+- **System** Contour: 15 Functions, 5 Data Objects, 6 Events.
+- **Actors:** Modeler (needs 14 Functions; *Works In A Browser*) and AI Agent
+  (needs the same 14; *Reaches The System As Tools*).
+- **Components:**
+  - **contour-engine** performs every Function and owns all data —
+    rationale: *One Core For Every Actor*, principle 4.
+  - **contour-engine-ui** performs nothing and implements the Console —
+    rationale: *Console Released Independently*, *Works In A Browser*.
+- **Interfaces:**
+  - **Contour Console** serves the Modeler (Web UI), implemented by
+    contour-engine-ui, through the Contour REST API.
+  - **Contour MCP Server** serves the AI Agent (MCP), implemented by
+    contour-engine.
+  - **Contour REST API** serves Components (OpenAPI), implemented by
+    contour-engine — rationale: the allocation that puts the Console apart
+    from the Functions it presents.
 
 ```mermaid
 graph LR
     Modeler([Actor: Modeler])
     Agent([Actor: AI Agent])
     subgraph Contour [System: Contour]
-        Search[Function: Search Specifications]
-        Retrieve[Function: Retrieve Element]
-        Store[Function: Store Element]
-        Validate[Function: Validate Element]
-        Elem[(Data Object: Contour Element)]
-    end
-    Modeler -->|uses| Search
-    Modeler -->|uses| Retrieve
-    Modeler -->|uses| Store
-    Agent -->|uses| Search
-    Agent -->|uses| Store
-    Store -->|calls| Validate
-    Store -->|modifies| Elem
-```
-
-## Implementation layer
-
-```yaml
-Implementation:
-  system: Contour
-  components:
-    - name: contour-engine
-      basis: [One Core For Every Actor, "principle 4: data has a home"]
-      performs: [every Function]
-      owns: [every Data Object]
-      produces: [every Event]
-      implements: [Contour MCP Server, Contour REST API]
-    - name: contour-engine-ui
-      basis: [Console Released Independently, Works In A Browser]
-      performs: []
-      implements: [Contour Console]
-  interfaces:
-    - name: Contour Console
-      basis: [Modeler needs, Works In A Browser]
-      serves: Modeler
-      implementedBy: contour-engine-ui
-      through: Contour REST API
-      binding: { style: Web UI }
-      exposes: [the Functions the Modeler needs]
-    - name: Contour MCP Server
-      basis: [AI Agent needs, Reaches The System As Tools]
-      serves: AI Agent
-      implementedBy: contour-engine
-      binding: { style: MCP, … }
-      exposes: { per Function: operation, request, responses }
-    - name: Contour REST API
-      basis: ["allocation: Contour Console is implemented by contour-engine-ui, its Functions by contour-engine"]
-      serves: Components
-      implementedBy: contour-engine
-      binding: { style: OpenAPI, … }
-      exposes: { per Function: operation, request, responses }
-```
-
-New fields:
-
-- **`basis`** (Component, Interface) — what it was derived from: an Actor's
-  needs (`Modeler needs`), a Requirement, a Guardrail, a principle, or an
-  allocation. Every implementation element must trace back to the
-  specification.
-- **`implements`** (Component → Interface) and **`implementedBy`**
-  (Interface → Component) — which Component runs an Interface. Interfaces are
-  no longer owned by a Component by definition; they are allocated to one.
-- **`through`** (Interface → Interface) — when an Interface is implemented by
-  a Component that doesn't perform the Functions it exposes, the internal
-  Interface it reaches them through.
-- **`performs` / `owns` / `produces`** keep their meaning, now read as
-  allocation of the specification's Functions, Data Objects and Events.
-
-```mermaid
-graph LR
-    Modeler([Actor: Modeler])
-    Agent([Actor: AI Agent])
-    subgraph UI [Component: contour-engine-ui]
-        Console(("Contour Console"))
-    end
-    subgraph Engine [Component: contour-engine]
-        REST(("Contour REST API"))
-        MCP(("Contour MCP Server"))
-        Fns["14 exposed Functions<br/>+ Validate Element"]
-        Data[(5 Data Objects)]
+        subgraph UI [Component: contour-engine-ui]
+            Console(("Contour Console"))
+        end
+        subgraph Engine [Component: contour-engine]
+            REST(("Contour REST API"))
+            MCP(("Contour MCP Server"))
+            Fns["14 exposed Functions<br/>+ Validate Element"]
+            Data[(5 Data Objects)]
+        end
     end
     Modeler -->|uses| Console
     Agent -->|uses| MCP
@@ -139,105 +93,129 @@ graph LR
     Fns -->|reads / modifies| Data
 ```
 
-## Derivation rules
+Compared with the v0.4 model of the same system, it has 15 Functions where
+v0.4 had 29: the Console's 14 Functions (List Components, View Element, Find
+Requirements, …) were presentation of capabilities the System already has.
+The Console's description now says how its views combine them.
 
-How the implementation follows from the specification. An implementer or an
-LLM applies these; the checker verifies the result.
+## Completing a model in each direction
 
-1. **One Interface per Actor and channel.** An Actor's channel Requirement
-   (*Works In A Browser*, *Reaches The System As Tools*) picks the binding
-   style; the Interface `serves` that Actor and `exposes` exactly the
-   Functions it `needs`.
-2. **Components come from Requirements and Guardrails, not from Functions.**
-   A Requirement that something changes, scales, fails or is released on its
-   own (*Console Released Independently*) separates a Component; a Guardrail
-   that something stays together (*One Core For Every Actor*) and principle 4
-   (one home per Data Object) keep things in one.
-3. **Everything is allocated exactly once.** Each Function to one performing
-   Component, each Data Object to one owner, each Event to the Component
-   that performs the Function producing it.
+Rules for moving from what a model has to what it lacks. An implementer or an
+LLM applies them; the checker reports what's left.
+
+**Top-down** — from needs to structure:
+
+1. **One Interface per Actor and channel.** The Actor's channel Requirement
+   (*Works In A Browser*, *Reaches The System As Tools*) picks the binding;
+   the Interface `serves` the Actor and `exposes` exactly its `needs`.
+2. **Components come from Requirements and Guardrails.** A Requirement that
+   something changes, scales, fails or is released on its own separates a
+   Component; a Guardrail that things stay together, and principle 4 (one
+   home per Data Object), keep them in one.
+3. **Allocate everything exactly once** — each Function to one performer,
+   each Data Object to one owner, each Event to the Component performing the
+   Function that produces it.
 4. **A split allocation derives an internal Interface.** When an Interface is
-   implemented by a Component that doesn't perform the Functions it exposes,
-   an Interface serving `Components` is derived on the performing Component,
-   exposing those Functions. That is where the Contour REST API comes from.
-5. **Everything derived names its basis.** A Component or Interface that
-   traces back to nothing in the specification is a design decision nobody
-   asked for.
+   implemented by a Component that doesn't perform its Functions, an
+   Interface serving `Components` is added on the performing Component and
+   named in `through`. This is where the Contour REST API comes from.
+
+**Bottom-up** — from code to needs:
+
+1. **Deployables become Components; entry points become Interfaces;**
+   handlers become Functions; stores become Data Objects.
+2. **An Interface's caller becomes an Actor**, unless the caller is another
+   Component — then the Interface serves `Components`.
+3. **An Actor's `needs` are what the Interfaces serving it expose**, reviewed
+   for anything exposed by accident.
+4. **Rationale is recovered, not invented.** Each Component and Interface
+   gets the Requirement or Guardrail that explains why the code has it. One
+   that can't be explained is a finding in itself: either a missing
+   Requirement or a design worth questioning.
 
 ## Checks (`contour-check.py`)
 
-Specification:
+The checker reads one model and reports two kinds of finding.
 
-- **S1** every Function an Actor needs exists
-- **S2** steps reference existing elements; `consumes` only first; `becomes` maps real outcomes onto the caller's alternatives
-- **S3** no Actor needs an Event-triggered Function
-- **S4** every referenced Requirement and Guardrail is defined
+**Contradictions** — wrong however the model was started; exit status 1:
 
-Implementation against specification:
+- **R1–R6** every reference resolves: Actor needs, steps, `becomes`,
+  Interfaces (callers, exposed Functions, implementers, `through`),
+  Component allocations, Requirements, Guardrails, rationale
+- **R3** response maps cover exactly each exposed Function's outcomes
+- **R1, R3** no Actor needs, and no Interface exposes, an Event-triggered Function
+- **A1** nothing allocated to two Components
+- **A3** `reads`/`modifies` stay with the owner (principle 4); an Event is
+  produced where its Function runs; a `calls` edge isn't split across
+  Components
+- **A5** an internal Interface named in `through` serves `Components` and
+  exposes the Functions from their performer
 
-- **I0** the implementation is of the specified System
-- **I1** every Function, Data Object and Event is allocated to exactly one Component, and nothing unspecified is allocated
-- **I2** `reads`/`modifies` stay with the owning Component; Events are produced where their Function runs; a `calls` edge isn't split across Components
-- **I3** every Interface is implemented by exactly one Component, consistently on both sides
-- **I4** each Actor's needs are covered *exactly* by the Interfaces serving it
-- **I5** Interfaces serve an Actor or `Components`; exposed Functions exist and aren't Event-triggered; responses cover exactly each Function's outcomes
-- **I6** an Interface presenting Functions performed elsewhere goes `through` an internal Interface that exposes them from their performer
-- **I7** every Component and Interface has a basis that resolves to the specification
-- **I8** Requirements and Guardrails referenced in the implementation are defined
+**Gaps** — not filled in yet; each comes with a top-down and a bottom-up next
+step:
 
-Result on contour-engine: **all checks pass.** Nine deliberate violations —
-an undefined need, an unexposed need, an unallocated Function, a Data Object
-owned twice, a Console without the REST API, an Interface without basis, a
-basis naming nothing, a `calls` split across Components, an incomplete
-response map — are each caught by the intended rule.
+- **A0** no Components at all
+- **A2** a Function, Data Object or Event not yet allocated
+- **A4** an Interface not yet allocated to a Component
+- **A5** an Interface presenting Functions performed elsewhere, with no internal Interface
+- **N1** an Actor with Interfaces but no stated needs
+- **N2** an Actor with needs but no Interface
+- **N3** a need no Interface exposes
+- **N4** an exposed Function the Actor isn't recorded as needing
+- **W1** a Component or Interface without rationale
 
-## What modeling contour-engine this way showed
+A gap reads like this:
 
-- **The 14 Console Functions disappeared.** List Components, View Element,
-  Find Requirements and the rest were presentation of the System's real
-  capabilities. At specification level the Modeler needs the same Functions
-  the AI Agent does; the Console's description says how views combine them.
-  The specification has 15 Functions where the v0.4 model had 29.
-- **The REST API is derived, not declared.** No Actor needs it. It exists
-  because one Requirement put the Console in its own Component (rule 4).
-- **Guardrails moved to the level they describe.** "UI Owns No Contour Data"
-  and "UI Goes Through The Engine" only made sense once a UI Component
-  existed; in the specification their intent is *One Core For Every Actor*
-  and *Writes Are Validated By The System*, and the implementation's
-  allocation satisfies them.
-- **Every implementation decision has a reason on record.** v0.3 stated
-  "contour-engine-ui is a separate Component"; v0.5 states *why*.
+```
+GAP [N3] Actor AI Agent needs Render Diagram, but no Interface serving it exposes it
+      top-down:  expose Render Diagram on an Interface serving AI Agent
+      bottom-up: check whether AI Agent really needs it; if not, drop it from `needs`
+```
+
+Results on contour-engine:
+
+| Model state | Contradictions | Gaps |
+|---|---|---|
+| Complete (`contour-engine.yaml`) | 0 | 0 |
+| Started top-down: no Components or Interfaces yet | 0 | 3 — A0, and N2 for each Actor |
+| Started bottom-up: no needs, no rationale yet | 0 | 7 — N1 for each Actor, W1 for each Component and Interface |
+| A Data Object given a second owner | 8 | 0 |
+| Validate Element moved to the UI Component | 4 | 0 |
+| An MCP response map missing an outcome | 1 | 0 |
+| The Console without its internal REST API | 0 | 1 — A5 |
 
 ## Open decisions
 
-1. **A `calls` edge split by allocation.** The specification says
-   `Store Element calls Validate Element`. If an implementation ever put them
-   in different Components, the edge would cross a boundary and need an
-   internal Interface — today I2 simply forbids it. Either keep forbidding it
-   (allocation must respect `calls`), or let the implementation refine
-   `calls` into `uses: Interface / Function`, as rule 4 does for Actors.
-2. **Calls into another System at specification level.** The specification
-   has no Interfaces, so a Function depending on another System would name
-   `uses: Inventory / Check Stock` (System / Function), and the
-   implementation would resolve it to `Inventory gRPC / Check Stock`. Not
+1. **A `calls` edge split by allocation.** `Store Element calls Validate
+   Element`; if an allocation ever put them in different Components, the edge
+   would cross a boundary. Today that's a contradiction (A3). The
+   alternative is to let the allocation refine `calls` into
+   `uses: Interface / Function`, the way rule 4 adds an internal Interface.
+2. **A call into another System,** when the model starts top-down and has no
+   Interfaces yet: does a step name `System / Function`, refined to
+   `Interface / Function` once the other System's Interface is known? Not
    exercised by contour-engine, which depends on no other System.
 3. **`needs` or `uses`.** `needs` reads better for business authors; `uses`
-   reuses the relation's name. These notes use `needs`.
-4. **Channel requirements as a convention.** Rule 1 relies on each Actor
-   having one Requirement that names its channel. It works here, but it's a
-   convention, not a check: nothing yet verifies that an Interface's binding
-   style matches the Requirement it cites.
-5. **Diagrams.** Two views follow naturally — the specification view (Actors
-   using Functions inside the System) and the implementation view
-   (Components, Interfaces, allocation). How the v0.4 one-page diagram maps
-   onto them is still to be decided.
-6. **Schema.** `contour.schema.json` on this branch is still v0.4; a v0.5
-   schema needs separate shapes for the two files.
+   reuses the relation's name.
+4. **Channel requirements are a convention.** Top-down rule 1 relies on an
+   Actor having a Requirement that names its channel; nothing yet checks
+   that an Interface's binding matches it.
+5. **Is the `needs` ↔ `exposes` redundancy worth keeping in a complete
+   model?** It's what lets the two directions meet and be checked against
+   each other (N3, N4); the cost is that a complete model states the same
+   set twice.
+6. **Diagrams.** The figure above draws the System with Components inside it.
+   How the v0.4 one-page diagram, the half-open neighbours and the
+   drill-downs carry over is still to be decided.
+7. **Schema.** `contour.schema.json` on this branch is still v0.4; it needs
+   System-level Interfaces, `implements`, `through`, `rationale` and Actor
+   `needs`.
 
 ## Next steps
 
 1. Settle the open decisions.
-2. Model the paper's Order Service example in both layers, including a call
-   into another System (open decision 2).
-3. Write the v0.5 schema for both layers.
-4. Rewrite the paper around the two layers.
+2. Model the paper's Order Service example as a v0.5 model, including a call
+   into another System (open decision 2), and run it both from a top-down
+   start and a bottom-up start.
+3. Update the schema.
+4. Rewrite the paper around one model and two directions.
