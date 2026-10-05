@@ -72,6 +72,22 @@ def check(model):
                         bad("R2", f"{f['name']}: {k} is not an outcome of {st['calls']}")
                     if v not in alts:
                         bad("R2", f"{f['name']}: {v} is not one of its alternatives")
+        for st in f.get("steps") or []:
+            if "uses" not in st:
+                continue
+            iname, _, target = st["uses"].partition(" / ")
+            mapped = st.get("becomes") or {}
+            if iname not in ifaces:
+                bad("R2", f"{f['name']}: uses unknown Interface {iname}")
+            elif target not in exposed(ifaces[iname]):
+                bad("R2", f"{f['name']}: {iname} doesn't expose {target}")
+            if "Unreachable" not in mapped:
+                bad("R2", f"{f['name']}: uses {st['uses']} without mapping Unreachable")
+            for k, v in mapped.items():
+                if target in funcs and k != "Unreachable" and k not in outcomes(funcs[target]):
+                    bad("R2", f"{f['name']}: {k} is not an outcome of {target}")
+                if v not in alts:
+                    bad("R2", f"{f['name']}: {v} is not one of its alternatives")
     for i in ifaces.values():
         if i.get("serves") != "Components" and i.get("serves") not in actors:
             bad("R3", f"Interface {i['name']} serves unknown caller {i.get('serves')}")
@@ -85,8 +101,6 @@ def check(model):
                 bad("R3", f"{i['name']} / {n}: responses don't cover exactly its outcomes")
         if i.get("implementedBy") and i["implementedBy"] not in comps:
             bad("R3", f"Interface {i['name']} implemented by unknown Component {i['implementedBy']}")
-        if i.get("through") and i["through"] not in ifaces:
-            bad("R3", f"Interface {i['name']} goes through unknown Interface {i['through']}")
     for c in comps.values():
         for field, pool, kind in (("performs", funcs, "Function"), ("owns", data, "Data Object"),
                                   ("produces", events, "Event"), ("implements", ifaces, "Interface")):
@@ -137,25 +151,30 @@ def check(model):
                 if "produces" in st and pc and producer.get(st["produces"]) not in (None, pc):
                     bad("A3", f"{f['name']} on {pc} produces {st['produces']}, allocated to {producer[st['produces']]}")
                 if "calls" in st and pc and performer.get(st["calls"]) not in (None, pc):
-                    bad("A3", f"{f['name']} calls {st['calls']} across Components ({pc} → {performer[st['calls']]})")
+                    there = performer[st["calls"]]
+                    gap("A7", f"{f['name']} on {pc} calls {st['calls']} on {there}: the call crosses Components",
+                        f"expose {st['calls']} on an Interface of {there} serving Components and turn the step into "
+                        f"`uses: <Interface> / {st['calls']}` with Unreachable mapped",
+                        f"find the client {pc} uses to reach {there} and record that Interface")
         for i in ifaces.values():
             if not i.get("implementedBy"):
                 gap("A4", f"Interface {i['name']} isn't allocated to a Component",
                     "decide which Component implements it", "find the deployable that serves it")
                 continue
             here = i["implementedBy"]
-            remote = {n for n in exposed(i) if performer.get(n) not in (None, here)}
-            if remote and not i.get("through"):
-                gap("A5", f"Interface {i['name']} presents Functions performed elsewhere ({len(remote)}) with no internal Interface",
-                    f"derive an Interface serving Components on the performing Component and name it in `through`",
-                    f"find how {here} reaches them (its API client) and record that Interface")
-            elif remote:
-                t = ifaces.get(i["through"], {})
-                if t.get("serves") != "Components":
-                    bad("A5", f"{i['name']} goes through {i['through']}, which doesn't serve Components")
-                for n in sorted(remote):
-                    if n not in exposed(t) or performer.get(n) != t.get("implementedBy"):
-                        bad("A5", f"{i['name']} reaches {n} through {i['through']}, which doesn't expose it from its performer")
+            for n in sorted(exposed(i)):
+                if performer.get(n) not in (None, here):
+                    bad("A5", f"Interface {i['name']} on {here} exposes {n}, performed by {performer[n]}: "
+                              f"an Interface exposes only Functions its Component performs")
+        for f in funcs.values():
+            pc = performer.get(f["name"])
+            for st in f.get("steps") or []:
+                iname = st.get("uses", "").partition(" / ")[0]
+                i = ifaces.get(iname)
+                if not (i and pc and i.get("implementedBy")) or i["implementedBy"] == pc:
+                    continue
+                if i.get("serves") not in ("Components",):
+                    bad("A6", f"{f['name']} on {pc} uses {iname}, which serves {i.get('serves')}, not Components")
     elif funcs:
         gaps.append("[A0] No Components yet: the model says what the System does, not how it is split.\n"
                     "      top-down:  allocate Functions and Data Objects once Requirements say what must change or scale apart\n"

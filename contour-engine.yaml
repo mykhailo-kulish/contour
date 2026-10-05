@@ -198,6 +198,195 @@ System:
     result: Rendered
     alternatives: {Not Found: No element has this id.}
     guardrails: [Read-only function]
+  - name: List Components
+    description: >-
+      Presents the Components the engine holds as a paginated list a person can scan and pick from, each
+      shown by name and short description.
+    steps:
+    - uses: Contour REST API / Search Specifications
+      becomes: {Unreachable: Engine Unavailable}
+    result: Listed
+    alternatives: {Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.}
+    behavior: >-
+      Asks the engine for one page of Components — a bounded slice plus the total count, ordered stably
+      by name so paging is repeatable — and presents it with controls for the next and previous page.
+      A browsing entry point into View Element.
+    requirements: [Listings Are Paginated]
+    guardrails: [Read-only function]
+  - name: Find Specifications
+    description: >-
+      Lets a person find stored elements of any type by free text over their records, and presents the
+      matches to open.
+    steps:
+    - uses: Contour REST API / Search Specifications
+      becomes: {Unreachable: Engine Unavailable}
+    result: Matches Shown
+    alternatives: {Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.}
+    behavior: >-
+      Presents the matches by relevance, best first, each labelled with its element type. Selecting a
+      match opens it in View Element.
+    requirements: [Uses full-text search]
+    guardrails: [Read-only function]
+  - name: View Element
+    description: >-
+      Shows one element of any type in detail — its structured record, the requirements and guardrails
+      it references, its relationships — together with its element-scoped diagram.
+    steps:
+    - uses: Contour REST API / Retrieve Element
+      becomes: {Not Found: Not Found, Unreachable: Engine Unavailable}
+    - uses: Contour REST API / Render Element Diagram
+      becomes: {Not Found: Not Found, Unreachable: Engine Unavailable}
+    result: Shown
+    alternatives:
+      Not Found: The element no longer exists.
+      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
+    behavior: >-
+      Presents the record's fields in readable form, adapting to the element type — steps and outcomes
+      for a Function, exposed Functions for an Interface, schema for a Data Object — and the diagram exactly
+      as the engine renders it, using the full widget width and zoomable. From any relationship the person
+      can open the element on the other end.
+    guardrails: [Diagrams Are Shown As Rendered, Read-only function]
+  - name: View Model Diagram
+    description: >-
+      Shows the whole-model diagram for the model the element in view belongs to — the Context-level counterpart
+      to View Element's diagram.
+    steps:
+    - uses: Contour REST API / Render Diagram
+      becomes: {Model Not Found: Not Found, Unreachable: Engine Unavailable}
+    result: Shown
+    alternatives:
+      Not Found: The model no longer exists.
+      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
+    guardrails: [Diagrams Are Shown As Rendered, Read-only function]
+  - name: Find Requirements
+    description: >-
+      Lets a person search the Requirement definitions by free text and presents the matches by relevance.
+    steps:
+    - uses: Contour REST API / Search Requirements
+      becomes: {Unreachable: Engine Unavailable}
+    result: Matches Shown
+    alternatives: {Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.}
+    behavior: Selecting a match opens it in View Requirement.
+    requirements: [Uses full-text search]
+    guardrails: [Read-only function]
+  - name: View Requirement
+    description: >-
+      Shows one Requirement definition — its name and the obligation it states. The requirement names
+      on an element in View Element link here.
+    steps:
+    - uses: Contour REST API / Retrieve Requirement
+      becomes: {Not Found: Not Found, Unreachable: Engine Unavailable}
+    result: Shown
+    alternatives:
+      Not Found: No Requirement has this name.
+      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
+    guardrails: [Read-only function]
+  - name: Find Guardrails
+    description: >-
+      Lets a person search the Guardrail definitions by free text and presents the matches by relevance.
+    steps:
+    - uses: Contour REST API / Search Guardrails
+      becomes: {Unreachable: Engine Unavailable}
+    result: Matches Shown
+    alternatives: {Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.}
+    behavior: Selecting a match opens it in View Guardrail.
+    requirements: [Uses full-text search]
+    guardrails: [Read-only function]
+  - name: View Guardrail
+    description: >-
+      Shows one Guardrail definition — its name and the boundary it states. The guardrail names on an
+      element in View Element link here.
+    steps:
+    - uses: Contour REST API / Retrieve Guardrail
+      becomes: {Not Found: Not Found, Unreachable: Engine Unavailable}
+    result: Shown
+    alternatives:
+      Not Found: No Guardrail has this name.
+      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
+    guardrails: [Read-only function]
+  - name: Edit Element
+    description: >-
+      Lets a person create a Contour element or change an existing one — its name, type, ownership, record
+      and, through the record's named fields, its relationships — and submit it to the engine.
+    steps:
+    - uses: Contour REST API / Store Element
+      becomes: {Rejected: Rejected, Unreachable: Engine Unavailable}
+    result: Saved
+    alternatives:
+      Rejected: >-
+        The engine found violations; they are shown against the offending fields and nothing is stored.
+      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
+    behavior: >-
+      The form adapts to the element type and is pre-filled from View Element when editing an existing
+      element. Relationships are edited as the record's named fields, never as separate objects.
+    guardrails: [Writes Are Validated By The System]
+  - name: Remove Element
+    description: >-
+      Lets a person remove a stored element — its record and its relationships — after confirming the
+      intent.
+    steps:
+    - uses: Contour REST API / Delete Element
+      becomes: {Unreachable: Engine Unavailable}
+    result: Deleted
+    alternatives: {Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.}
+    behavior: >-
+      An element that is already gone counts as deleted. The Console performs no cascade logic of its
+      own; removal semantics are the engine's.
+    guardrails: [Writes Are Validated By The System]
+  - name: Edit Requirement
+    description: >-
+      Lets a person create a Requirement definition or change an existing one's description, and submit
+      it to the engine.
+    steps:
+    - uses: Contour REST API / Store Requirement
+      becomes: {Invalid: Rejected, Name Taken: Rejected, Unreachable: Engine Unavailable}
+    result: Saved
+    alternatives:
+      Rejected: >-
+        The engine refused the name or description; the reason is shown and nothing is stored.
+      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
+    guardrails: [Writes Are Validated By The System]
+  - name: Edit Guardrail
+    description: >-
+      Lets a person create a Guardrail definition or change an existing one's description, and submit
+      it to the engine.
+    steps:
+    - uses: Contour REST API / Store Guardrail
+      becomes: {Invalid: Rejected, Name Taken: Rejected, Unreachable: Engine Unavailable}
+    result: Saved
+    alternatives:
+      Rejected: >-
+        The engine refused the name or description; the reason is shown and nothing is stored.
+      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
+    guardrails: [Writes Are Validated By The System]
+  - name: Remove Requirement
+    description: >-
+      Lets a person remove a Requirement definition after confirming the intent.
+    steps:
+    - uses: Contour REST API / Delete Requirement
+      becomes: {Still Referenced: Still Referenced, Unreachable: Engine Unavailable}
+    result: Deleted
+    alternatives:
+      Still Referenced: >-
+        A stored element still references it; the refusal is shown and the definition stays.
+      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
+    behavior: >-
+      The Console never rewrites referencing elements to break a reference on the person's behalf.
+    guardrails: [Writes Are Validated By The System]
+  - name: Remove Guardrail
+    description: >-
+      Lets a person remove a Guardrail definition after confirming the intent.
+    steps:
+    - uses: Contour REST API / Delete Guardrail
+      becomes: {Still Referenced: Still Referenced, Unreachable: Engine Unavailable}
+    result: Deleted
+    alternatives:
+      Still Referenced: >-
+        A stored element still references it; the refusal is shown and the definition stays.
+      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
+    behavior: >-
+      The Console never rewrites referencing elements to break a reference on the person's behalf.
+    guardrails: [Writes Are Validated By The System]
   dataObjects:
   - name: Contour Element
     description: >-
@@ -311,38 +500,51 @@ System:
     requirements: [Local start composition]
   - name: contour-engine-ui
     description: >-
-      The browser application a Modeler works in. Presents the Functions the Modeler needs; performs none
-      of them and owns no data.
+      The browser application a Modeler works in. Performs the person-level Functions — listing, finding,
+      viewing, editing and removing — each of which uses the engine through the Contour REST API. Owns
+      no Contour data.
     rationale: [Console Released Independently, Works In A Browser]
-    performs: []
+    performs:
+    - List Components
+    - Find Specifications
+    - View Element
+    - View Model Diagram
+    - Find Requirements
+    - View Requirement
+    - Find Guardrails
+    - View Guardrail
+    - Edit Element
+    - Remove Element
+    - Edit Requirement
+    - Edit Guardrail
+    - Remove Requirement
+    - Remove Guardrail
     implements: [Contour Console]
     requirements: [Local start composition]
   interfaces:
   - name: Contour Console
     description: >-
       The views a Modeler uses: listing, search, element and definition detail with their diagrams, and
-      create, edit and delete. Each view presents one or more exposed Functions — an element's detail
-      view shows Retrieve Element and Render Element Diagram together.
+      create, edit and remove.
     rationale: [Modeler needs, Works In A Browser]
     serves: Modeler
     implementedBy: contour-engine-ui
-    through: Contour REST API
     binding: {style: Web UI}
     exposes:
-    - Store Element
-    - Delete Element
-    - Retrieve Element
-    - Store Requirement
-    - Retrieve Requirement
-    - Delete Requirement
-    - Store Guardrail
-    - Retrieve Guardrail
-    - Delete Guardrail
-    - Search Specifications
-    - Search Requirements
-    - Search Guardrails
-    - Render Diagram
-    - Render Element Diagram
+    - List Components
+    - Find Specifications
+    - View Element
+    - View Model Diagram
+    - Find Requirements
+    - View Requirement
+    - Find Guardrails
+    - View Guardrail
+    - Edit Element
+    - Remove Element
+    - Edit Requirement
+    - Edit Guardrail
+    - Remove Requirement
+    - Remove Guardrail
   - name: Contour MCP Server
     description: >-
       Model Context Protocol access for AI Agents, reading and storing Contour specifications as tools.
@@ -450,11 +652,9 @@ System:
           Not Found: error
   - name: Contour REST API
     description: >-
-      REST/JSON access for other Components — derived because the Console is implemented apart from the
-      Functions it presents.
-    rationale:
-    - >-
-      allocation: Contour Console is implemented by contour-engine-ui, its Functions by contour-engine
+      REST/JSON access for other Components. Exists because the Console's Functions run in their own Component
+      and use the engine's Functions from there.
+    rationale: [Console Released Independently]
     serves: Components
     implementedBy: contour-engine
     binding: {style: OpenAPI, base: /api/v1, auth: service token, errors: RFC 7807}
@@ -564,20 +764,20 @@ Actor:
     A person who works with Contour specifications — an architect, developer or analyst — browsing, reading
     and editing them.
   needs:
-  - Store Element
-  - Delete Element
-  - Retrieve Element
-  - Store Requirement
-  - Retrieve Requirement
-  - Delete Requirement
-  - Store Guardrail
-  - Retrieve Guardrail
-  - Delete Guardrail
-  - Search Specifications
-  - Search Requirements
-  - Search Guardrails
-  - Render Diagram
-  - Render Element Diagram
+  - List Components
+  - Find Specifications
+  - View Element
+  - View Model Diagram
+  - Find Requirements
+  - View Requirement
+  - Find Guardrails
+  - View Guardrail
+  - Edit Element
+  - Remove Element
+  - Edit Requirement
+  - Edit Guardrail
+  - Remove Requirement
+  - Remove Guardrail
   requirements: [Works In A Browser, Listings Are Paginated]
   guardrails: [Diagrams Are Shown As Rendered]
 - name: AI Agent
