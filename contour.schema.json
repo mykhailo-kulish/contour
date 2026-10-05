@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mykhailo-kulish.github.io/contour/contour.schema.json",
   "title": "Contour model",
-  "description": "A Contour specification in the framework's structured-record style (Section 3) with a nested ownership hierarchy: Components nest under their System (groups), and the elements a Component owns — functions, dataObjects, events — nest under that Component. A Component's contracts (Section 3.3) are keyed by the Actor they serve, or by the reserved key `Components`, and list the Functions reachable through them with their operation, request and responses. Actors are top-level. Requirement and Guardrail definitions (Section 3.6) are top-level and referenced by name. Cross-boundary edges (groups, uses, consumes, references, dependsOn) and Function steps are inline by name. No IDs. Field names are camelCase.",
+  "description": "A Contour specification in the framework's structured-record style (Section 3) with a nested ownership hierarchy: Components nest under their System (groups), and the elements a Component owns — interfaces, functions, dataObjects, events — nest under that Component. Each Interface serves one caller (an Actor, or `Components`) and exposes the Component's Functions with their operation, request and responses. Actors are top-level. Requirement and Guardrail definitions (Section 3.6) are top-level and referenced by name. Cross-boundary edges (groups, uses, consumes, references, dependsOn) and Function steps are inline by name. No IDs. Field names are camelCase.",
   "type": "object",
   "additionalProperties": false,
   "minProperties": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "Actor": {
-      "description": "An external role with distinct access to the Components it uses (Section 3). Top-level because it sits outside the Component boundary. Which Components it uses is derived from the contracts keyed by its name. Given as a single element or a list.",
+      "description": "An external role with distinct access (Section 3). Top-level because it sits outside the Component boundary. Which Interfaces it uses is derived from the Interfaces that serve it. Given as a single element or a list.",
       "oneOf": [
         {"$ref": "#/$defs/actor"},
         {
@@ -119,7 +119,7 @@
         "uses": {
           "type": "string",
           "minLength": 1,
-          "description": "A Function of another Component, as \"Component / Function\".",
+          "description": "A Function of another Component, as \"Interface / Function\" — the Interface must serve `Components` and expose the target.",
           "pattern": "^.+ / .+$"
         },
         "reads": {
@@ -273,7 +273,8 @@
         "uses": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^.+ / .+$"
+          "pattern": "^.+ / .+$",
+          "description": "A Function of another Component, as \"Interface / Function\"."
         },
         "reads": {
           "type": "string",
@@ -314,10 +315,10 @@
         }
       ]
     },
-    "contractKey": {
+    "callerKey": {
       "type": "string",
       "minLength": 1,
-      "description": "A contract key: the name of an Actor, or the reserved key `Components` for Functions of other Components (Section 3.3). That an Actor name refers to an existing Actor is checked outside JSON Schema."
+      "description": "The caller an Interface serves: the name of an Actor, or the reserved key `Components` for Functions of other Components (Section 3.3). That an Actor name refers to an existing Actor is checked outside JSON Schema."
     },
     "response": {
       "description": "What a caller gets back for one outcome (Section 3.3): a code alone, or a code and a body. Code values are defined by the contract's binding.",
@@ -338,8 +339,8 @@
         }
       ]
     },
-    "contractEntry": {
-      "description": "How one Function is reached through one contract (Section 3.3).",
+    "exposure": {
+      "description": "How one Function is reached through an Interface (Section 3.3).",
       "type": "object",
       "additionalProperties": false,
       "required": ["operation", "responses"],
@@ -361,12 +362,14 @@
         }
       }
     },
-    "contract": {
+    "interface": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["binding", "functions"],
+      "required": ["name", "description", "serves", "binding", "exposes"],
       "properties": {
+        "name": {"$ref": "#/$defs/name"},
         "description": {"$ref": "#/$defs/description"},
+        "serves": {"$ref": "#/$defs/callerKey"},
         "binding": {
           "type": "object",
           "required": ["style"],
@@ -375,21 +378,26 @@
             "style": {
               "type": "string",
               "minLength": 1,
-              "description": "The style whose binding interprets every other key in this block (e.g. OpenAPI, gRPC, AsyncAPI)."
+              "description": "The style whose binding interprets every other key in this block (e.g. OpenAPI, gRPC, MCP, Web UI)."
             }
           },
-          "description": "The contract's technology (Section 3.3). Contour defines only `style`; every other key is defined by that style's binding."
+          "description": "The Interface's technology (Section 3.3). Contour defines only `style`; every other key is defined by that style's binding."
         },
-        "functions": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {"$ref": "#/$defs/contractEntry"},
-          "description": "The Functions reachable through this contract, keyed by Function name. A Function is external exactly when some contract lists it."
+        "exposes": {
+          "oneOf": [
+            {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {"$ref": "#/$defs/exposure"}
+            },
+            {"$ref": "#/$defs/nameList"}
+          ],
+          "description": "The Component's Functions this Interface makes reachable: keyed by Function name with operation, request and responses, or — for a binding whose conventions cover them, such as a Web UI — a plain list of Function names."
         },
         "requirements": {"$ref": "#/$defs/requirements"},
         "guardrails": {"$ref": "#/$defs/guardrails"}
       },
-      "description": "How one kind of caller reaches the Component (Section 3.3)."
+      "description": "An Interface (Section 3): a channel on its Component's boundary through which one caller reaches the Component. A Function is external exactly when some Interface exposes it."
     },
     "system": {
       "type": "object",
@@ -428,12 +436,11 @@
         "description": {"$ref": "#/$defs/description"},
         "requirements": {"$ref": "#/$defs/requirements"},
         "guardrails": {"$ref": "#/$defs/guardrails"},
-        "contract": {
-          "type": "object",
-          "minProperties": 1,
-          "propertyNames": {"$ref": "#/$defs/contractKey"},
-          "additionalProperties": {"$ref": "#/$defs/contract"},
-          "description": "How the Component is reached, keyed by who reaches it: an Actor's name, or `Components` (Section 3.3)."
+        "interfaces": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/interface"},
+          "description": "The Interfaces this Component provides, nested; each serves one caller."
         },
         "functions": {
           "type": "array",
@@ -502,7 +509,7 @@
         "requirements": {"$ref": "#/$defs/requirements"},
         "guardrails": {"$ref": "#/$defs/guardrails"}
       },
-      "description": "A Function (Section 3), in business terms only. It is external when a contract of its Component lists it, private otherwise; it declares no inputs and carries nothing technical."
+      "description": "A Function (Section 3), in business terms only. It is external when an Interface of its Component exposes it, private otherwise; it declares no inputs and carries nothing technical."
     },
     "dataObject": {
       "type": "object",
