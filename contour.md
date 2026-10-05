@@ -31,10 +31,13 @@ change; and an **LLM**, which can do the same, using the model as its
 specification and its boundary.
 
 What gets modeled is a **System** — the business-level application a
-stakeholder would name — delivered by one or more **Components**, each
-with a single lifecycle. Contour describes a System by describing its
-Components: the Component is what gets drawn, the System is what they
-add up to.
+stakeholder would name — which exists to serve its **Actors**: people,
+organizations, other systems. What it offers them is a set of
+**Functions**, reached through **Interfaces**. How it is built is a
+separate decision: **Components** implement the System, grouping its
+Functions and the data they keep by lifecycle, maintainability and
+availability. The Component is what gets drawn; the System is what it
+is for.
 
 The paper claims two things: that a readable Contour record is enough to
 propagate a described change into an existing codebase correctly, and
@@ -136,10 +139,15 @@ Contour elements. Lowercase "system" is the ordinary word.
 
 1. **Two boundaries: business and lifecycle.** A *System* is the
    business-level application a stakeholder would name — one capability,
-   however it happens to be built. A *Component* is a lifecycle boundary
-   inside it: one thing built, versioned, released, and retired as a
-   whole. A System of one Component is normal; a System of several is
-   common. Neither boundary is a size limit — a Component can be a small
+   however it happens to be built — and it exists to serve its Actors.
+   A *Component* is how part of it is implemented: a lifecycle boundary
+   inside the System, one thing built, versioned, released, and retired
+   as a whole, grouping Functions and Data Objects that belong together
+   for lifecycle, maintainability and availability reasons. What the
+   System offers comes first; how it is split into Components is a design
+   decision that can change without changing what is offered. A System
+   of one Component is normal; a System of several is common. Neither
+   boundary is a size limit — a Component can be a small
    service or a large monolith, so long as it shares one lifecycle. Each
    diagram centres on one Component: everything else is either something
    it contains or something in its environment. The one-page constraint
@@ -216,22 +224,22 @@ Contour defines **seven element types**:
 
 | # | Element | Meaning |
 |---|---------|---------|
-| 1 | **System** | The business-level application a stakeholder would name — "Order Management", "Payments". A System groups the Components that together deliver one business capability. It performs no work of its own: everything a System does, one of its Components does. A System may contain a single Component, and often contains several |
-| 2 | **Component** | One lifecycle: whatever is built, versioned, released, and retired as a whole, usually by one owning team. The consequence is that it deploys as one artifact — a single service, or a monolith, however large. Anything with more than one lifecycle is modeled as more than one Component, tied together by `depends-on`. This is the unit most modeling happens at |
+| 1 | **System** | The business-level application a stakeholder would name — "Order Management", "Payments". It exists to serve its Actors: what it offers them is the Functions its Interfaces expose. A System groups the Components that implement it and performs no work of its own: everything a System does, one of its Components does. A System may contain a single Component, and often contains several |
+| 2 | **Component** | The implementation of part of a System, with one lifecycle: whatever is built, versioned, released, and retired as a whole, usually by one owning team. It groups the Functions it performs and the Data Objects it owns because they belong together — they change together, are maintained by the same team, or must be available together. The consequence is that it deploys as one artifact — a single service, or a monolith, however large. Anything with more than one lifecycle is modeled as more than one Component, tied together by `depends-on`. Which Component performs a Function is an allocation decision: moving it changes `performs`, not the Function's record. This is the unit most modeling happens at |
 | 3 | **Function** | A capability the Component performs — internal or external. It is externally accessible when one of its Component's Interfaces exposes it, and private otherwise. A Function is described in business terms only — what it does and how it can end; how it is reached is its Interfaces' concern. A Function can consume and react to an Event, produce an Event, call another Function in the same Component, or use another Component's external Function. It is the minimal unit of Component behavior — but not smaller than an actual piece of business-related work: `Calculate Total` is a Function; `Parse Input` is an implementation step inside one, and belongs in that Function's `steps`/`behavior` record (Section 3.3), not on the diagram |
-| 4 | **Interface** | A channel through which outsiders reach the Component. It belongs to one Component, **serves** exactly one caller — an Actor, or other Components — carries the technology in its `binding`, and **exposes** a set of the Component's Functions, with what the caller sends and gets back for each (Section 3.3) |
+| 4 | **Interface** | A channel through which outsiders reach the Component. It belongs to one Component, **serves** exactly one caller — an Actor, or other Components of this or another System — carries the technology in its `binding`, and **exposes** a set of the Component's Functions, with what the caller sends and gets back for each (Section 3.3) |
 | 5 | **Event** | A notification to the environment that a Component's state has changed — "Payment Completed", "Order Placed". An Event reports something that has already happened, which is why Event names are written in the past tense (Section 3.5) |
 | 6 | **Data Object** | A named piece of information the Component owns and keeps. Data that only travels across a boundary — a request, a response — is not a Data Object; it is described inline in the Interface where it crosses (Section 3.3) |
-| 7 | **Actor** | A person, external system, or organization that participates from outside. An Actor is a *role with distinct access*, not a job title: two job titles that reach a Component the same way are one Actor, and the difference between them belongs in the Actor's `description` |
+| 7 | **Actor** | A person, organization, or external system the System serves. The relation is one-way: an Actor uses the System through an Interface, and the System never calls an Actor. A system the modeled System *depends on* is therefore not an Actor: a Function reaches it like any other Component, through that Component's Interface (Section 3.3). An Actor is a *role with distinct access*, not a job title: two job titles that reach a Component the same way are one Actor, and the difference between them belongs in the Actor's `description` |
 
 and **nine relationship types** (three of which pair an inverse verb — `produces`/`consumes`, `reads`/`modifies`, `owns`/`references`):
 
 | Relationship | Between | Meaning |
 |---|---|---|
-| **groups** | System → Component | This Component is one of the deployables delivering the System's capability. A Component belongs to exactly one System |
-| **performs** | Component → Function | The component carries out this function |
+| **groups** | System → Component | This Component is one of those implementing the System. A Component belongs to exactly one System |
+| **performs** | Component → Function | This Component implements this Function — an allocation of the System's work to one lifecycle unit |
 | **exposes** | Interface → Function | The Interface makes this Function reachable to the caller it serves. A Function no Interface exposes is private. An Interface exposes only Functions of its own Component |
-| **uses** | Actor → Interface, or Function → Function through an Interface | An Actor reaches a Component through an Interface that serves it. A Function of *another* Component reaches a Function through an Interface that serves `Components` and exposes it; in its `steps` it names both, as `Interface / Function`. A Function never `uses` a Function of its own Component; inside a Component the relation is `calls` |
+| **uses** | Actor → Interface, or Function → Function through an Interface | An Actor reaches a Component through an Interface that serves it; this is the only direction an Actor takes part in. A Function of *another* Component — in the same System or another one — reaches a Function through an Interface that serves `Components` and exposes it; in its `steps` it names both, as `Interface / Function`. A Function never `uses` a Function of its own Component; inside a Component the relation is `calls` |
 | **calls** | Function → Function | One Function invokes another *within the same Component*, with no Interface in between. Order is not part of this edge — see the note below |
 | **produces / consumes** | Component → Event, or Function → Event | At Component level, a Context-view summary: the component raises or reacts to this event. At Function level, the precise cause: which specific Function produces it, or reacts to it — see Section 3.4 |
 | **reads / modifies** | Function → Data Object | A Function's actual read or write access to a Data Object owned by its *own* Component — principle 4 at Function-level precision. A Function in another Component can only reach that data through an Event it consumes or an external Function it uses |
@@ -557,7 +565,7 @@ It is an element in its own right — drawn on its Component's boundary
 
 - **Who is it for?** — **`serves`** names exactly one caller: an Actor,
   or the reserved word `Components`, which stands for any Function of
-  another Component. Because it must be an existing Actor or
+  another Component — in this System or in another one. Because it must be an existing Actor or
   `Components`, a renamed or misspelled caller fails a check rather than
   silently breaking the link.
 - **Through what technology?** — **`binding`** holds it in one block.
@@ -1055,8 +1063,12 @@ customer may cancel only before shipment, support staff at any stage but
 with a reason. The two Functions are named for whose action they are
 (Section 3.5).
 
-Both neighbours are half-open. `Validate Order` uses Inventory's `Check
-Stock` through Inventory gRPC, and Billing's `Create Invoice` uses
+Both neighbours are half-open, and neither belongs to Order Management:
+they are Components of other Systems. That makes no difference to how a
+call into them is modeled — an Actor only ever uses the System, so a
+dependency on another System is a Function using another Component's
+Interface, exactly as inside one System. `Validate Order` uses
+Inventory's `Check Stock` through Inventory gRPC, and Billing's `Create Invoice` uses
 `Fetch Order` through Order gRPC — the latter is how Billing
 `references` Order data without reading it directly (principle 4). Each
 edge lands on the Function it reaches and names its Interface. Because
@@ -1471,7 +1483,10 @@ the evidence in [`contour-experiments.md`](contour-experiments.md)
   paper depends on.
 - **No distinction between a current and a target record.** A record can
   describe a Component as it is or as it is meant to become, and legacy
-  extraction needs both. Experiment 3's record described a target
+  extraction needs both. Treating Components as an allocation of the
+  System's Functions (Section 3) narrows the gap — a Function's record is
+  the same before and after it moves, and only `performs` changes — but
+  the model still has no way to hold both allocations at once. Experiment 3's record described a target
   Component that did not yet exist as its own lifecycle, and the
   decomposition status of its dependencies had to be carried outside
   the metamodel (Experiments §3).
@@ -1605,7 +1620,13 @@ it, never the other way round (Section 3.3).
 
 ## Changelog
 
-- **v0.4** — Split the record into two concerns: a **Function** says, in
+- **v0.4** — Reframed the System as what serves its Actors and the
+  Component as how it is implemented: Components group a System's
+  Functions and Data Objects by lifecycle, maintainability and
+  availability, and `performs`/`owns` are read as allocation. Actors are
+  one-way — they use the System and are never called by it; a dependency
+  on another System is a Function using that System's Component through
+  an Interface. Split the record into two concerns: a **Function** says, in
   business terms only, what happens and how it can end; an **Interface**
   says how outsiders reach it. Interface was redefined: it belongs to one
   Component, `serves` exactly one caller — an Actor, or `Components` for

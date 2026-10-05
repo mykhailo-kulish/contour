@@ -14,10 +14,10 @@
 System:
   name: Contour
   description: >-
-    A backend engine for storing, searching and managing Contour specifications — the seven-element models
-    and structured records defined by the Contour framework — delivered by two Components: contour-engine,
-    which owns all Contour data, and the contour-engine-ui Console, which browses and manages it through
-    the engine.
+    Stores, searches and manages Contour specifications — the seven-element models and structured records
+    defined by the Contour framework — for the people who model with them, through the Console, and for
+    AI agents, through an MCP server. Implemented by two Components: contour-engine, which owns all Contour
+    data, and the contour-engine-ui Console, which browses and manages it through the engine.
   guardrails: [Follow Technology Radar]
   groups:
   - name: contour-engine-ui

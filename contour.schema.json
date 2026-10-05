@@ -19,7 +19,7 @@
       ]
     },
     "Actor": {
-      "description": "An external role with distinct access (Section 3). Top-level because it sits outside the Component boundary. Which Interfaces it uses is derived from the Interfaces that serve it. Given as a single element or a list.",
+      "description": "A person, organization or external system the System serves, with distinct access (Section 3). Actors only use the System; they are never called by it. Top-level because they sit outside the Component boundary. Which Interfaces it uses is derived from the Interfaces that serve it. Given as a single element or a list.",
       "oneOf": [
         {"$ref": "#/$defs/actor"},
         {
@@ -318,7 +318,7 @@
     "callerKey": {
       "type": "string",
       "minLength": 1,
-      "description": "The caller an Interface serves: the name of an Actor, or the reserved key `Components` for Functions of other Components (Section 3.3). That an Actor name refers to an existing Actor is checked outside JSON Schema."
+      "description": "The caller an Interface serves: the name of an Actor, or the reserved key `Components` for Functions of other Components, in this System or another (Section 3.3). That an Actor name refers to an existing Actor is checked outside JSON Schema."
     },
     "response": {
       "description": "What a caller gets back for one outcome (Section 3.3): a code alone, or a code and a body. Code values are defined by the contract's binding.",
