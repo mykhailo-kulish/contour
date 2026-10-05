@@ -28,12 +28,12 @@ needs, then the code).
 
 ## What v0.5 adds to v0.4
 
-- **An Actor declares the Functions it `needs`.** This is the record of the
+- **An Actor declares the Functions it `uses`.** This is the record of the
   Actor → Function `uses` edge. Where an Interface exists, the edge is
   refined as Actor → Interface → Function — the same rollup as principle 5.
   ```yaml
   Actor: Modeler
-    needs: [Find Specifications, View Element, Edit Element, …]
+    uses: [Find Specifications, View Element, Edit Element, …]
     requirements: [Works In A Browser, Listings Are Paginated]
   ```
 - **Interfaces belong to the System and are allocated to a Component**, not
@@ -57,8 +57,8 @@ needs, then the code).
 
 - **System** Contour: 29 Functions (15 core, 14 Console), 5 Data Objects,
   6 Events.
-- **Actors:** Modeler (needs the 14 Console Functions; *Works In A Browser*)
-  and AI Agent (needs 14 core Functions; *Reaches The System As Tools*).
+- **Actors:** Modeler (uses the 14 Console Functions; *Works In A Browser*)
+  and AI Agent (uses 14 core Functions; *Reaches The System As Tools*).
 - **Components:**
   - **contour-engine** performs every Function and owns all data —
     rationale: *One Core For Every Actor*, principle 4.
@@ -121,7 +121,7 @@ LLM applies them; the checker reports what's left.
 
 1. **One Interface per Actor and channel.** The Actor's channel Requirement
    (*Works In A Browser*, *Reaches The System As Tools*) picks the binding;
-   the Interface `serves` the Actor and `exposes` exactly its `needs`.
+   the Interface `serves` the Actor and `exposes` exactly what it `uses`.
 2. **Components come from Requirements and Guardrails.** A Requirement that
    something changes, scales, fails or is released on its own separates a
    Component; a Guardrail that things stay together, and principle 4 (one
@@ -129,13 +129,20 @@ LLM applies them; the checker reports what's left.
 3. **Allocate everything exactly once** — each Function to one performer,
    each Data Object to one owner, each Event to the Component performing the
    Function that produces it.
-4. **A split `calls` derives an internal Interface.** Before allocation, the
-   Console Functions simply `call` the core Functions. When an allocation
-   puts caller and callee in different Components, the callee is exposed on
-   an Interface of its Component serving `Components`, and the step becomes
-   `uses: <Interface> / <Function>` with `Unreachable` mapped to one of the
-   caller's alternatives. This is where the Contour REST API comes from: its
-   exposes are exactly the Functions the Console's steps cross to.
+4. **`calls` stays within a Component; crossing one is a redesign.** Before
+   allocation, the Console Functions simply `call` the core Functions. An
+   allocation that puts caller and callee in different Components
+   contradicts those steps (A3). The modeler redesigns: either keep both in
+   one Component, or expose the callee on an Interface of its Component
+   serving `Components` and rewrite the step as `uses: <Interface> /
+   <Function>`, deciding what `Unreachable` becomes. The redesign is a
+   decision, not a mechanical rewrite, because the caller gains a failure it
+   didn't have. This is where the Contour REST API comes from: its exposes are
+   exactly the Functions the Console's steps cross to.
+5. **Only what exists is referenced.** A step names a Function, Data Object,
+   Event or Interface already in the model. A call into another System
+   starts by modeling that System's Interface; top-down never writes a
+   placeholder for a System, Function or Interface that isn't there.
 
 **Bottom-up** — from code to needs:
 
@@ -143,7 +150,7 @@ LLM applies them; the checker reports what's left.
    handlers become Functions; stores become Data Objects.
 2. **An Interface's caller becomes an Actor**, unless the caller is another
    Component — then the Interface serves `Components`.
-3. **An Actor's `needs` are what the Interfaces serving it expose**, reviewed
+3. **What an Actor `uses` is what the Interfaces serving it expose**, reviewed
    for anything exposed by accident.
 4. **Rationale is recovered, not invented.** Each Component and Interface
    gets the Requirement or Guardrail that explains why the code has it. One
@@ -156,17 +163,17 @@ The checker reads one model and reports two kinds of finding.
 
 **Contradictions** — wrong however the model was started; exit status 1:
 
-- **R1–R6** every reference resolves: Actor needs, steps, `becomes`,
+- **R1–R6** every reference resolves: Actor `uses`, steps, `becomes`,
   Interfaces,
   Component allocations, Requirements, Guardrails, rationale
 - **R3** response maps cover exactly each exposed Function's outcomes
-- **R1, R3** no Actor needs, and no Interface exposes, an Event-triggered Function
+- **R1, R3** no Actor uses, and no Interface exposes, an Event-triggered Function
 - **A1** nothing allocated to two Components
 - **R2** a `uses` step names an Interface that exposes the target, maps
   `Unreachable`, and maps only the target's outcomes to the caller's
   alternatives
 - **A3** `reads`/`modifies` stay with the owner (principle 4); an Event is
-  produced where its Function runs
+  produced where its Function runs; `calls` stays within a Component
 - **A5** an Interface exposes only Functions its implementing Component
   performs
 - **A6** a Function using another Component's Interface uses one that serves
@@ -178,20 +185,18 @@ step:
 - **A0** no Components at all
 - **A2** a Function, Data Object or Event not yet allocated
 - **A4** an Interface not yet allocated to a Component
-- **A7** a `calls` step whose caller and callee are allocated to different
-  Components (top-down rule 4)
-- **N1** an Actor with Interfaces but no stated needs
-- **N2** an Actor with needs but no Interface
-- **N3** a need no Interface exposes
-- **N4** an exposed Function the Actor isn't recorded as needing
+- **N1** an Actor with Interfaces but no `uses`
+- **N2** an Actor with `uses` but no Interface
+- **N3** a Function the Actor uses that no Interface serving it exposes
+- **N4** an exposed Function the Actor isn't recorded as using
 - **W1** a Component or Interface without rationale
 
 A gap reads like this:
 
 ```
-GAP [N3] Actor AI Agent needs Render Diagram, but no Interface serving it exposes it
+GAP [N3] Actor AI Agent uses Render Diagram, but no Interface serving it exposes it
       top-down:  expose Render Diagram on an Interface serving AI Agent
-      bottom-up: check whether AI Agent really needs it; if not, drop it from `needs`
+      bottom-up: check whether AI Agent really needs it; if not, drop it from `uses`
 ```
 
 Results on contour-engine:
@@ -200,44 +205,47 @@ Results on contour-engine:
 |---|---|---|
 | Complete (`contour-engine.yaml`) | 0 | 0 |
 | Started top-down: no Components or Interfaces; Console Functions `call` core ones | 0 | 3 — A0, and N2 for each Actor |
-| Top-down, Components allocated, no Interfaces yet | 0 | 17 — A7 for each crossing `calls`, N2 for each Actor |
-| Started bottom-up: no needs, no rationale yet | 0 | 7 — N1 for each Actor, W1 for each Component and Interface |
+| Top-down, Components allocated, no Interfaces yet | 15 — A3, one per crossing `calls` (redesign due) | 2 — N2 for each Actor |
+| Started bottom-up: no `uses`, no rationale yet | 0 | 7 — N1 for each Actor, W1 for each Component and Interface |
 | A Data Object given a second owner | 8 | 0 |
 | The Console exposes a core Function (Retrieve Element) | 1 — A5 | 1 — N4 |
 | A `uses` step without `Unreachable` | 1 — R2 | 0 |
 | The REST API stops exposing a Function the Console uses | 1 — R2 | 0 |
 | A Console Function uses the MCP Server (serves AI Agent) | 1 — A6 | 0 |
 
+## Decisions
+
+1. **`calls` stays within a Component unless the design changes.** A `calls`
+   split by an allocation is a contradiction (A3), resolved by redesign —
+   one Component, or an Interface and a `uses` step (top-down rule 4). Tools
+   don't rewrite it silently.
+2. **Top-down modeling doesn't rely on what doesn't exist.** No placeholder
+   for another System, Function or Interface: a call into another System
+   is written once that System's Interface is in the model (top-down rule 5).
+3. **`uses`, not `needs`.** An Actor's record lists the Functions it `uses`,
+   the same name as the relation. Rationale may still say "Modeler needs":
+   it names the reason, not the field.
+
 ## Open decisions
 
-1. **Who rewrites `calls` into `uses`.** Rule 4 says a split `calls`
-   becomes `uses` once an Interface exists, and the checker reports it as a
-   gap (A7). Whether a tool performs that rewrite, or the model keeps
-   `calls` and a view derives the Interface, is open.
-2. **A call into another System,** when the model starts top-down and has no
-   Interfaces yet: does a step name `System / Function`, refined to
-   `Interface / Function` once the other System's Interface is known? Not
-   exercised by contour-engine, which depends on no other System.
-3. **`needs` or `uses`.** `needs` reads better for business authors; `uses`
-   reuses the relation's name.
-4. **Channel requirements are a convention.** Top-down rule 1 relies on an
+1. **Channel requirements are a convention.** Top-down rule 1 relies on an
    Actor having a Requirement that names its channel; nothing yet checks
    that an Interface's binding matches it.
-5. **Is the `needs` ↔ `exposes` redundancy worth keeping in a complete
+2. **Is the `uses` ↔ `exposes` redundancy worth keeping in a complete
    model?** It's what lets the two directions meet and be checked against
    each other (N3, N4); the cost is that a complete model states the same
    set twice.
-6. **Diagrams.** The figure above draws the System with Components inside it.
+3. **Diagrams.** The figure above draws the System with Components inside it.
    How the v0.4 one-page diagram, the half-open neighbours and the
    drill-downs carry over is still to be decided.
-7. **Schema.** `contour.schema.json` on this branch is still v0.4; it needs
-   System-level Interfaces, `implements`, `rationale` and Actor `needs`.
+4. **Schema.** `contour.schema.json` on this branch is still v0.4; it needs
+   System-level Interfaces, `implements`, `rationale` and Actor `uses`.
 
 ## Next steps
 
 1. Settle the open decisions.
 2. Model the paper's Order Service example as a v0.5 model, including a call
-   into another System (open decision 2), and run it both from a top-down
+   into another System (decision 2: model its Interface first), and run it both from a top-down
    start and a bottom-up start.
 3. Update the schema.
 4. Rewrite the paper around one model and two directions.

@@ -763,7 +763,7 @@ Actor:
   description: >-
     A person who works with Contour specifications — an architect, developer or analyst — browsing, reading
     and editing them.
-  needs:
+  uses:
   - List Components
   - Find Specifications
   - View Element
@@ -783,7 +783,7 @@ Actor:
 - name: AI Agent
   description: >-
     An LLM or agent that reads and stores Contour specifications on someone's behalf.
-  needs:
+  uses:
   - Store Element
   - Delete Element
   - Retrieve Element

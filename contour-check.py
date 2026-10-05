@@ -53,11 +53,11 @@ def check(model):
 
     # ── References: always contradictions when they don't resolve ─────────
     for a in actors.values():
-        for n in a.get("needs", []):
+        for n in a.get("uses", []):
             if n not in funcs:
-                bad("R1", f"Actor {a['name']} needs unknown Function {n}")
+                bad("R1", f"Actor {a['name']} uses unknown Function {n}")
             elif event_triggered(n):
-                bad("R1", f"Actor {a['name']} needs Event-triggered Function {n}")
+                bad("R1", f"Actor {a['name']} uses Event-triggered Function {n}")
     for f in funcs.values():
         alts = set((f.get("alternatives") or {}).keys())
         for i, st in enumerate(f.get("steps") or []):
@@ -151,11 +151,9 @@ def check(model):
                 if "produces" in st and pc and producer.get(st["produces"]) not in (None, pc):
                     bad("A3", f"{f['name']} on {pc} produces {st['produces']}, allocated to {producer[st['produces']]}")
                 if "calls" in st and pc and performer.get(st["calls"]) not in (None, pc):
-                    there = performer[st["calls"]]
-                    gap("A7", f"{f['name']} on {pc} calls {st['calls']} on {there}: the call crosses Components",
-                        f"expose {st['calls']} on an Interface of {there} serving Components and turn the step into "
-                        f"`uses: <Interface> / {st['calls']}` with Unreachable mapped",
-                        f"find the client {pc} uses to reach {there} and record that Interface")
+                    bad("A3", f"{f['name']} on {pc} calls {st['calls']} on {performer[st['calls']]}: `calls` stays "
+                              f"within a Component; redesign — allocate both to one Component, or expose "
+                              f"{st['calls']} on an Interface serving Components and make the step `uses`")
         for i in ifaces.values():
             if not i.get("implementedBy"):
                 gap("A4", f"Interface {i['name']} isn't allocated to a Component",
@@ -180,27 +178,27 @@ def check(model):
                     "      top-down:  allocate Functions and Data Objects once Requirements say what must change or scale apart\n"
                     "      bottom-up: record the deployables found in the code as Components")
 
-    # ── Actor needs and Interfaces: the two directions meet here ──────────
+    # ── Actor uses and Interfaces: the two directions meet here ──────────
     for a in actors.values():
         serving = [i for i in ifaces.values() if i.get("serves") == a["name"]]
         got = set().union(*[exposed(i) for i in serving]) if serving else set()
-        need = set(a.get("needs", []))
+        need = set(a.get("uses", []))
         if not need and got:
-            gap("N1", f"Actor {a['name']} has Interfaces but no stated needs",
-                "state the Functions this Actor needs",
+            gap("N1", f"Actor {a['name']} has Interfaces but no `uses`",
+                "state the Functions this Actor uses",
                 f"take them from what its Interfaces expose: {sorted(got)[:3]}…")
         if not serving and need:
-            gap("N2", f"Actor {a['name']} needs {len(need)} Functions but no Interface serves it",
+            gap("N2", f"Actor {a['name']} uses {len(need)} Functions but no Interface serves it",
                 "add an Interface for this Actor, its binding chosen by the Actor's channel Requirement",
                 "find the entry point this Actor uses in the code")
         for n in sorted(need - got) if serving else []:
-            gap("N3", f"Actor {a['name']} needs {n}, but no Interface serving it exposes it",
+            gap("N3", f"Actor {a['name']} uses {n}, but no Interface serving it exposes it",
                 f"expose {n} on an Interface serving {a['name']}",
-                f"check whether {a['name']} really needs it; if not, drop it from `needs`")
+                f"check whether {a['name']} really needs it; if not, drop it from `uses`")
         for n in sorted(got - need) if need else []:
-            gap("N4", f"An Interface exposes {n} to {a['name']}, who isn't recorded as needing it",
+            gap("N4", f"An Interface exposes {n} to {a['name']}, who isn't recorded as using it",
                 f"remove it from the Interface if {a['name']} doesn't need it",
-                f"add it to {a['name']}'s `needs`")
+                f"add it to {a['name']}'s `uses`")
 
     # ── Rationale: why a Component or Interface exists ─────────────────────
     for x in list(comps.values()) + list(ifaces.values()):
