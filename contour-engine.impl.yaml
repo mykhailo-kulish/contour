@@ -1,0 +1,257 @@
+# Contour v0.5 — contour-engine, IMPLEMENTATION (bottom-up, derived)
+#
+# How the System specified in contour-engine.spec.yaml is built and reached.
+# Components group the specified Functions, Data Objects and Events into
+# lifecycle units; Interfaces give each Actor a channel to the Functions it
+# needs. Every Component and Interface names its basis — the Actor needs,
+# Requirements, Guardrails or allocation it was derived from. Nothing here
+# changes what the System does: Functions are referenced, never redefined.
+
+
+Implementation:
+  system: Contour
+  description: >-
+    How the Contour System is built and reached, derived from contour-engine.spec.yaml.
+  components:
+  - name: contour-engine
+    description: >-
+      Stores, validates, searches and renders Contour specifications. Performs every Function and owns
+      all Contour data.
+    basis: [One Core For Every Actor, 'principle 4: data has a home']
+    performs: [Store Element, Delete Element, Retrieve Element, Validate Element, Store Requirement, Retrieve
+        Requirement, Delete Requirement, Store Guardrail, Retrieve Guardrail, Delete Guardrail, Search
+        Specifications, Search Requirements, Search Guardrails, Render Diagram, Render Element Diagram]
+    owns: [Contour Element, Contour Relationship, Contour Record, Contour Requirement, Contour Guardrail]
+    produces: [Element Stored, Element Deleted, Requirement Stored, Requirement Deleted, Guardrail Stored,
+      Guardrail Deleted]
+    implements: [Contour MCP Server, Contour REST API]
+    requirements: [Local start composition]
+  - name: contour-engine-ui
+    description: >-
+      The browser application a Modeler works in. Presents the Functions the Modeler needs; performs none
+      of them and owns no data.
+    basis: [Console Released Independently, Works In A Browser]
+    performs: []
+    implements: [Contour Console]
+    requirements: [Local start composition]
+  interfaces:
+  - name: Contour Console
+    description: >-
+      The views a Modeler uses: listing, search, element and definition detail with their diagrams, and
+      create, edit and delete. Each view presents one or more exposed Functions — an element's detail
+      view shows Retrieve Element and Render Element Diagram together.
+    basis: [Modeler needs, Works In A Browser]
+    serves: Modeler
+    implementedBy: contour-engine-ui
+    through: Contour REST API
+    binding: {style: Web UI}
+    exposes:
+    - Store Element
+    - Delete Element
+    - Retrieve Element
+    - Store Requirement
+    - Retrieve Requirement
+    - Delete Requirement
+    - Store Guardrail
+    - Retrieve Guardrail
+    - Delete Guardrail
+    - Search Specifications
+    - Search Requirements
+    - Search Guardrails
+    - Render Diagram
+    - Render Element Diagram
+  - name: Contour MCP Server
+    description: >-
+      Model Context Protocol access for AI Agents, reading and storing Contour specifications as tools.
+    basis: [AI Agent needs, Reaches The System As Tools]
+    serves: AI Agent
+    implementedBy: contour-engine
+    binding: {style: MCP, transport: streamable HTTP, auth: agent token}
+    exposes:
+      Store Element:
+        operation: store_element
+        request:
+          element: Contour Element { id?, name, elementType, systemId?, componentId? }
+          record: Contour Record.body
+          relationships: Contour Relationship { verb, toElementId }[]
+        responses:
+          Stored: {code: result, body: Contour Element}
+          Rejected:
+            code: result
+            body: {violations: 'string[1..]'}
+      Delete Element:
+        operation: delete_element
+        request: {id: uuid}
+        responses: {Deleted: result, Already Absent: result}
+      Retrieve Element:
+        operation: retrieve_element
+        request: {id: uuid}
+        responses:
+          Found:
+            code: result
+            body: {element: Contour Element, record: Contour Record, relationships: 'Contour Relationship[]'}
+          Not Found: error
+      Store Requirement:
+        operation: store_requirement
+        request: {id: uuid, name: string, description: string}
+        responses: {Stored: {code: result, body: Contour Requirement}, Invalid: error, Name Taken: error}
+      Retrieve Requirement:
+        operation: retrieve_requirement
+        request: {name: string}
+        responses: {Found: {code: result, body: Contour Requirement}, Not Found: error}
+      Delete Requirement:
+        operation: delete_requirement
+        request: {name: string}
+        responses: {Deleted: result, Already Absent: result, Still Referenced: error}
+      Store Guardrail:
+        operation: store_guardrail
+        request: {id: uuid, name: string, description: string}
+        responses: {Stored: {code: result, body: Contour Guardrail}, Invalid: error, Name Taken: error}
+      Retrieve Guardrail:
+        operation: retrieve_guardrail
+        request: {name: string}
+        responses: {Found: {code: result, body: Contour Guardrail}, Not Found: error}
+      Delete Guardrail:
+        operation: delete_guardrail
+        request: {name: string}
+        responses: {Deleted: result, Already Absent: result, Still Referenced: error}
+      Search Specifications:
+        operation: search_specifications
+        request:
+          query: string?
+          elementType: Contour Element.elementType?
+          name: string?
+          systemId: uuid?
+          componentId: uuid?
+          page: integer?
+          pageSize: integer?
+        responses:
+          Found:
+            code: result
+            body: {items: 'Contour Element { id, name, elementType }[]', total: integer}
+      Search Requirements:
+        operation: search_requirements
+        request: {query: string}
+        responses: {Found: {code: result, body: 'Contour Requirement[]'}}
+      Search Guardrails:
+        operation: search_guardrails
+        request: {query: string}
+        responses: {Found: {code: result, body: 'Contour Guardrail[]'}}
+      Render Diagram:
+        operation: render_diagram
+        request: {modelId: uuid}
+        responses:
+          Rendered:
+            code: result
+            body: {mermaid: string}
+          Model Not Found: error
+      Render Element Diagram:
+        operation: render_element_diagram
+        request: {id: uuid}
+        responses:
+          Rendered:
+            code: result
+            body: {mermaid: string}
+          Not Found: error
+  - name: Contour REST API
+    description: >-
+      REST/JSON access for other Components — derived because the Console is implemented apart from the
+      Functions it presents.
+    basis: ["allocation: Contour Console is implemented by contour-engine-ui, its Functions by contour-engine"]
+    serves: Components
+    implementedBy: contour-engine
+    binding: {style: OpenAPI, base: /api/v1, auth: service token, errors: RFC 7807}
+    requirements: [Generate OpenAPI From The Interface]
+    exposes:
+      Store Element:
+        operation: POST /elements
+        request:
+          element: Contour Element { id?, name, elementType, systemId?, componentId? }
+          record: Contour Record.body
+          relationships: Contour Relationship { verb, toElementId }[]
+        responses:
+          Stored: {code: 200, body: Contour Element}
+          Rejected:
+            code: 422
+            body: {violations: 'string[1..]'}
+      Delete Element:
+        operation: DELETE /elements/{id}
+        request: {id: uuid}
+        responses: {Deleted: 204, Already Absent: 204}
+      Retrieve Element:
+        operation: GET /elements/{id}
+        request: {id: uuid}
+        responses:
+          Found:
+            code: 200
+            body: {element: Contour Element, record: Contour Record, relationships: 'Contour Relationship[]'}
+          Not Found: 404
+      Store Requirement:
+        operation: PUT /requirements/{id}
+        request: {id: uuid, name: string, description: string}
+        responses: {Stored: {code: 200, body: Contour Requirement}, Invalid: 400, Name Taken: 409}
+      Retrieve Requirement:
+        operation: GET /requirements/{name}
+        request: {name: string}
+        responses: {Found: {code: 200, body: Contour Requirement}, Not Found: 404}
+      Delete Requirement:
+        operation: DELETE /requirements/{name}
+        request: {name: string}
+        responses: {Deleted: 204, Already Absent: 204, Still Referenced: 409}
+      Store Guardrail:
+        operation: PUT /guardrails/{id}
+        request: {id: uuid, name: string, description: string}
+        responses: {Stored: {code: 200, body: Contour Guardrail}, Invalid: 400, Name Taken: 409}
+      Retrieve Guardrail:
+        operation: GET /guardrails/{name}
+        request: {name: string}
+        responses: {Found: {code: 200, body: Contour Guardrail}, Not Found: 404}
+      Delete Guardrail:
+        operation: DELETE /guardrails/{name}
+        request: {name: string}
+        responses: {Deleted: 204, Already Absent: 204, Still Referenced: 409}
+      Search Specifications:
+        operation: GET /elements
+        request:
+          query: string?
+          elementType: Contour Element.elementType?
+          name: string?
+          systemId: uuid?
+          componentId: uuid?
+          page: integer?
+          pageSize: integer?
+        responses:
+          Found:
+            code: 200
+            body: {items: 'Contour Element { id, name, elementType }[]', total: integer}
+      Search Requirements:
+        operation: GET /requirements
+        request: {query: string}
+        responses: {Found: {code: 200, body: 'Contour Requirement[]'}}
+      Search Guardrails:
+        operation: GET /guardrails
+        request: {query: string}
+        responses: {Found: {code: 200, body: 'Contour Guardrail[]'}}
+      Render Diagram:
+        operation: GET /models/{modelId}/diagram
+        request: {modelId: uuid}
+        responses:
+          Rendered:
+            code: 200
+            body: {mermaid: string}
+          Model Not Found: 404
+      Render Element Diagram:
+        operation: GET /elements/{id}/diagram
+        request: {id: uuid}
+        responses:
+          Rendered:
+            code: 200
+            body: {mermaid: string}
+          Not Found: 404
+
+Requirement:
+- name: Generate OpenAPI From The Interface
+  description: >-
+    The OpenAPI specification is assembled from the Contour REST API Interface of this record and kept
+    in resources as the source for code generation; it is regenerated whenever the Interface changes,
+    never edited by hand.
