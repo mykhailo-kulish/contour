@@ -89,7 +89,7 @@ def check(model):
                 if v not in alts:
                     bad("R2", f"{f['name']}: {v} is not one of its alternatives")
     for i in ifaces.values():
-        if i.get("serves") != "Components" and i.get("serves") not in actors:
+        if i.get("serves") != "System" and i.get("serves") not in actors:
             bad("R3", f"Interface {i['name']} serves unknown caller {i.get('serves')}")
         ex = i.get("exposes") or []
         for n in exposed(i):
@@ -153,7 +153,7 @@ def check(model):
                 if "calls" in st and pc and performer.get(st["calls"]) not in (None, pc):
                     bad("A3", f"{f['name']} on {pc} calls {st['calls']} on {performer[st['calls']]}: `calls` stays "
                               f"within a Component; redesign — allocate both to one Component, or expose "
-                              f"{st['calls']} on an Interface serving Components and make the step `uses`")
+                              f"{st['calls']} on an Interface serving System and make the step `uses`")
         for i in ifaces.values():
             if not i.get("implementedBy"):
                 gap("A4", f"Interface {i['name']} isn't allocated to a Component",
@@ -171,8 +171,8 @@ def check(model):
                 i = ifaces.get(iname)
                 if not (i and pc and i.get("implementedBy")) or i["implementedBy"] == pc:
                     continue
-                if i.get("serves") not in ("Components",):
-                    bad("A6", f"{f['name']} on {pc} uses {iname}, which serves {i.get('serves')}, not Components")
+                if i.get("serves") != "System":
+                    bad("A6", f"{f['name']} on {pc} uses {iname}, which serves {i.get('serves')}, not System")
     elif funcs:
         gaps.append("[A0] No Components yet: the model says what the System does, not how it is split.\n"
                     "      top-down:  allocate Functions and Data Objects once Requirements say what must change or scale apart\n"
@@ -199,6 +199,18 @@ def check(model):
             gap("N4", f"An Interface exposes {n} to {a['name']}, who isn't recorded as using it",
                 f"remove it from the Interface if {a['name']} doesn't need it",
                 f"add it to {a['name']}'s `uses`")
+
+    # ── System Interfaces: every caller is a Component of this System, so the
+    #    uses steps are all in the model and can be checked against exposes ──
+    used = {st["uses"] for f in funcs.values() for st in f.get("steps") or [] if "uses" in st}
+    for i in ifaces.values():
+        if i.get("serves") != "System":
+            continue
+        for n in sorted(exposed(i)):
+            if f"{i['name']} / {n}" not in used:
+                gap("N5", f"{i['name']} exposes {n} to the System's Components, but no Function uses it",
+                    f"remove {n} from the Interface, or add the Function that needs it",
+                    f"find the caller in the code; if none, {n} is exposed by accident")
 
     # ── Rationale: why a Component or Interface exists ─────────────────────
     for x in list(comps.values()) + list(ifaces.values()):

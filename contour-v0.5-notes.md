@@ -71,7 +71,7 @@ needs, then the code).
     contour-engine-ui; exposes the Console Functions.
   - **Contour MCP Server** serves the AI Agent (MCP), implemented by
     contour-engine.
-  - **Contour REST API** serves Components (OpenAPI), implemented by
+  - **Contour REST API** serves System (OpenAPI), implemented by
     contour-engine; exposes exactly the 14 core Functions the Console
     Functions `use` — rationale: *Console Released Independently*.
 
@@ -134,7 +134,7 @@ LLM applies them; the checker reports what's left.
    allocation that puts caller and callee in different Components
    contradicts those steps (A3). The modeler redesigns: either keep both in
    one Component, or expose the callee on an Interface of its Component
-   serving `Components` and rewrite the step as `uses: <Interface> /
+   serving `System` and rewrite the step as `uses: <Interface> /
    <Function>`, deciding what `Unreachable` becomes. The redesign is a
    decision, not a mechanical rewrite, because the caller gains a failure it
    didn't have. This is where the Contour REST API comes from: its exposes are
@@ -149,7 +149,8 @@ LLM applies them; the checker reports what's left.
 1. **Deployables become Components; entry points become Interfaces;**
    handlers become Functions; stores become Data Objects.
 2. **An Interface's caller becomes an Actor**, unless the caller is another
-   Component — then the Interface serves `Components`.
+   Component of this System — then the Interface serves `System`. A caller
+   that is another System is an Actor.
 3. **What an Actor `uses` is what the Interfaces serving it expose**, reviewed
    for anything exposed by accident.
 4. **Rationale is recovered, not invented.** Each Component and Interface
@@ -177,7 +178,7 @@ The checker reads one model and reports two kinds of finding.
 - **A5** an Interface exposes only Functions its implementing Component
   performs
 - **A6** a Function using another Component's Interface uses one that serves
-  `Components`
+  `System`
 
 **Gaps** — not filled in yet; each comes with a top-down and a bottom-up next
 step:
@@ -189,6 +190,8 @@ step:
 - **N2** an Actor with `uses` but no Interface
 - **N3** a Function the Actor uses that no Interface serving it exposes
 - **N4** an exposed Function the Actor isn't recorded as using
+- **N5** a Function exposed on an Interface serving `System` that no Function
+  `uses`
 - **W1** a Component or Interface without rationale
 
 A gap reads like this:
@@ -212,6 +215,24 @@ Results on contour-engine:
 | A `uses` step without `Unreachable` | 1 — R2 | 0 |
 | The REST API stops exposing a Function the Console uses | 1 — R2 | 0 |
 | A Console Function uses the MCP Server (serves AI Agent) | 1 — A6 | 0 |
+
+## Interface
+
+An Interface is a channel: it declares how one caller reaches Functions the
+System offers and a Component performs. It carries `serves`, `exposes`
+(operation, request, responses), `binding` and `implementedBy`; every
+technical word lives there and none in a Function.
+
+- `serves: <Actor>` — a person, an organization, or **another System**, seen
+  from outside. What the Interface exposes equals what the Actor `uses`
+  (N1–N4).
+- `serves: System` — the Components of **this** System only. The callers are
+  Functions with `uses: <Interface> / <Function>` steps, all in this model,
+  so what the Interface exposes equals what those steps use (R2, N5).
+
+A neighbour System that calls in is therefore always an Actor, however much
+is known about its insides. Its Functions are modeled in its own model, where
+this System is an Actor of theirs.
 
 ## Decisions
 

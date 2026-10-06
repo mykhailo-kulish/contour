@@ -75,9 +75,9 @@ System:
     behavior: >-
       Enforces the v0.4 invariants at element scope: a Component has exactly one owning System; a Function,
       Data Object or Event has exactly one owning Component; a relationship target already exists; reads
-      and modifies stay within the owning Component; an Interface serves an existing Actor or Components
+      and modifies stay within the owning Component; an Interface serves an existing Actor or System
       and exposes only its own Component's Functions; each exposed Function's responses cover exactly
-      its outcomes; a uses step names an Interface that serves Components and exposes its target, and
+      its outcomes; a uses step names an Interface that serves System and exposes its target, and
       maps Unreachable; becomes values are the caller's own alternatives; consumes appears only first;
       Event names are past tense; every referenced Requirement and Guardrail is defined.
     requirements: [Enforce Contour Invariants]
@@ -655,7 +655,7 @@ System:
       REST/JSON access for other Components. Exists because the Console's Functions run in their own Component
       and use the engine's Functions from there.
     rationale: [Console Released Independently]
-    serves: Components
+    serves: System
     implementedBy: contour-engine
     binding: {style: OpenAPI, base: /api/v1, auth: service token, errors: RFC 7807}
     requirements: [Generate OpenAPI From The Interface]
