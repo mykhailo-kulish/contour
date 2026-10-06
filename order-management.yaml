@@ -1,0 +1,205 @@
+# Contour v0.5 model: Order Management System.
+# Customers place and manage orders, support staff handle them on a customer's
+# behalf, and Billing (another System, hence an Actor) reads them.
+# Stock is checked through Inventory's Interface, shown half-open in Neighbour.
+
+System:
+  name: Order Management
+  description: Takes customers' orders and carries them from placement to cancellation.
+  guardrails: [All Or Nothing]
+  functions:
+  - name: Place Order
+    description: Accepts a new order, checks it, and creates it.
+    steps:
+    - calls: Validate Order
+      becomes: {Short: Out Of Stock, Stock Unknown: Stock Unavailable}
+    - calls: Calculate Total
+    - modifies: Order
+    - produces: Order Placed
+    result: Placed
+    alternatives:
+      Out Of Stock: Some items can't be supplied in the requested quantity.
+      Stock Unavailable: Stock couldn't be checked right now.
+      Below Minimum: The order total is under $1.00.
+    behavior: The order is persisted with status pending, for the customer who called.
+    requirements: [Minimum Order Value]
+  - name: Validate Order
+    description: Checks every item of the new order against stock, and reports which are short.
+    steps:
+    - uses: Inventory gRPC / Check Stock
+      becomes: {Short: Short, Unreachable: Stock Unknown}
+    result: All Available
+    alternatives:
+      Short: Some items have less stock than ordered.
+      Stock Unknown: Inventory couldn't be reached.
+  - name: Calculate Total
+    description: Computes the order total from its line items.
+    result: Calculated
+    behavior: Sum of quantity × unit price per line item; no discounts or tax.
+  - name: Fetch Order
+    description: Returns a single order.
+    steps:
+    - reads: Order
+    result: Found
+    alternatives:
+      Not Found: No order has this id, or the caller may not see it.
+  - name: Cancel Own Order
+    description: Lets a customer cancel an order that hasn't shipped.
+    steps:
+    - reads: Order
+    - modifies: Order
+    - produces: Order Cancelled
+    result: Cancelled
+    alternatives:
+      Not Found: No order with this id belongs to the customer.
+      Already Shipped: The order has already shipped.
+      Already Cancelled: The order was cancelled earlier.
+  - name: Cancel Order for Customer
+    description: Lets support staff cancel any order, with a reason.
+    steps:
+    - reads: Order
+    - modifies: Order
+    - produces: Order Cancelled
+    result: Cancelled
+    alternatives:
+      Not Found: No order has this id.
+      Already Cancelled: The order was cancelled earlier.
+    behavior: The reason is stored on the Order.
+  dataObjects:
+  - name: Order
+    description: A customer's order, from placement through fulfillment.
+    schema:
+      id: uuid
+      customerId: string
+      items: Line Item[1..]
+      total: decimal
+      status: enum(pending, confirmed, shipped, cancelled)
+      cancellationReason: string?
+      Line Item: {productId: string, quantity: integer, unitPrice: decimal}
+  events:
+  - name: Order Placed
+    description: A customer's order was accepted and persisted.
+    schema: {orderId: uuid, customerId: string, total: decimal}
+  - name: Order Cancelled
+    description: An order was cancelled, by its customer or by support staff.
+    schema: {orderId: uuid, reason: "string?"}
+  components:
+  - name: order-service
+    description: Owns the order lifecycle from placement to cancellation.
+    performs: [Place Order, Validate Order, Calculate Total, Fetch Order, Cancel Own Order, Cancel Order for Customer]
+    owns: [Order]
+    produces: [Order Placed, Order Cancelled]
+    implements: [Customer API, Operations API, Order gRPC]
+    rationale: [All Or Nothing, "principle 4: data has a home"]
+  interfaces:
+  - name: Customer API
+    description: Customers placing, tracking and cancelling their own orders via web and mobile.
+    serves: Customer
+    binding: {style: OpenAPI, base: /v1/orders, auth: customer token, errors: RFC 7807}
+    implementedBy: order-service
+    rationale: [Customer needs, Web And Mobile]
+    exposes:
+      Place Order:
+        operation: POST /
+        request:
+          items: "Order.Line Item { productId, quantity }[1..]"
+        responses:
+          Placed: {code: 201, body: "Order { id, items, total, status }"}
+          Out Of Stock: {code: 409, body: {shortItems: "{ productId: string, missing: integer }[1..]"}}
+          Below Minimum: 422
+          Stock Unavailable: 503
+      Fetch Order:
+        operation: GET /{id}
+        request: {id: uuid}
+        responses:
+          Found: {code: 200, body: "Order { id, items, total, status }"}
+          Not Found: 404
+      Cancel Own Order:
+        operation: POST /{id}/cancel
+        request: {id: uuid}
+        responses:
+          Cancelled: {code: 200, body: "Order { id, status }"}
+          Already Shipped: 409
+          Already Cancelled: 409
+          Not Found: 404
+  - name: Operations API
+    description: Staff viewing and cancelling orders on a customer's behalf.
+    serves: Support Staff
+    binding: {style: OpenAPI, base: /ops/v1/orders, auth: staff SSO, errors: RFC 7807}
+    implementedBy: order-service
+    rationale: [Support Staff needs, Staff Sign-On]
+    exposes:
+      Fetch Order:
+        operation: GET /{id}
+        request: {id: uuid}
+        responses:
+          Found: {code: 200, body: Order}
+          Not Found: 404
+      Cancel Order for Customer:
+        operation: POST /{id}/cancel
+        request: {id: uuid, reason: string}
+        responses:
+          Cancelled: {code: 200, body: Order}
+          Already Cancelled: 409
+          Not Found: 404
+  - name: Order gRPC
+    description: Billing reading orders.
+    serves: Billing
+    binding: {style: gRPC, service: orders.v1.OrderService, auth: mTLS service identity}
+    implementedBy: order-service
+    rationale: [Billing needs, Service To Service]
+    exposes:
+      Fetch Order:
+        operation: GetOrder
+        request: {id: uuid}
+        responses:
+          Found: {code: OK, body: Order}
+          Not Found: NOT_FOUND
+
+Actor:
+- name: Customer
+  description: A person buying from the shop.
+  uses: [Place Order, Fetch Order, Cancel Own Order]
+  requirements: [Web And Mobile]
+  guardrails: [Own Orders Only]
+- name: Support Staff
+  description: Customer-service and back-office staff handling order issues.
+  uses: [Fetch Order, Cancel Order for Customer]
+  requirements: [Staff Sign-On]
+- name: Billing
+  description: The Billing System; invoices each order once it is placed.
+  uses: [Fetch Order]
+  requirements: [Service To Service]
+
+Requirement:
+- name: Minimum Order Value
+  description: An order must total at least $1.00 before it can be placed.
+- name: Web And Mobile
+  description: Customers reach the shop from a browser and the mobile app.
+- name: Staff Sign-On
+  description: Staff work under their corporate identity.
+- name: Service To Service
+  description: Other Systems call with their own service identity.
+
+Guardrail:
+- name: All Or Nothing
+  description: >-
+    A change is persisted and announced only after every check has passed. An alternative ending
+    leaves no change and produces no Event, unless it lists effects of its own.
+- name: Own Orders Only
+  description: >-
+    A customer can read or change only orders whose customerId matches their own identity. Other
+    orders end as Not Found, so their existence isn't revealed.
+
+# Half-open: Inventory as Order Management sees it. This System is an Actor of
+# Inventory, so its Interface serves Order Management.
+Neighbour:
+- name: Inventory
+  functions:
+  - name: Check Stock
+    result: Available
+    alternatives: {Short: Some items have less stock than requested.}
+  interfaces:
+  - name: Inventory gRPC
+    serves: Order Management
+    exposes: [Check Stock]
