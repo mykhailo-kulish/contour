@@ -234,6 +234,19 @@ A neighbour System that calls in is therefore always an Actor, however much
 is known about its insides. Its Functions are modeled in its own model, where
 this System is an Actor of theirs.
 
+## Neighbour Systems
+
+A model may carry a `Neighbour` block per System it touches: the half-open
+view of that System, holding only the Events, Functions (with outcomes) and
+Interfaces this System uses. A neighbour Interface serves this System as an
+Actor of that System — the mirror of rule above. `billing.yaml` is the
+example: Billing's `Create Invoice` consumes `Order Placed` and uses
+`Order gRPC / Fetch Order` from Order Management. The checker resolves the
+Interface, checks that it serves Billing and exposes the Function, that
+`becomes` keys are outcomes of the neighbour's Function, and that
+`Unreachable` is mapped. Interface names are unique across a model and its
+neighbours.
+
 ## Decisions
 
 1. **`calls` stays within a Component unless the design changes.** A `calls`

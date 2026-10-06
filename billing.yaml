@@ -1,0 +1,124 @@
+# Contour v0.5 model: Billing System.
+# Billing consumes Order Placed from Order Management, fetches the order through
+# Order Management's Order gRPC Interface (Billing is an Actor of that System),
+# and issues an invoice. Finance Staff look invoices up and void them.
+# The Neighbour block is the half-open view of Order Management: only what
+# Billing touches.
+
+System:
+  name: Billing
+  description: Issues an invoice for every placed order and lets finance staff look invoices up and void them.
+  functions:
+  - name: Create Invoice
+    description: Issues an invoice for a newly placed order.
+    steps:
+    - consumes: Order Placed
+    - uses: Order gRPC / Fetch Order
+      becomes: {Not Found: Order Missing, Unreachable: Deferred}
+    - modifies: Invoice
+    - produces: Invoice Issued
+    result: Invoiced
+    alternatives:
+      Order Missing:
+        when: The order no longer exists.
+        effects:
+        - produces: Invoice Failed
+      Deferred: Order Management couldn't be reached; the Event is processed again later.
+    behavior: One invoice per order, for the order's total.
+  - name: Fetch Invoice
+    description: Returns a single invoice.
+    steps:
+    - reads: Invoice
+    result: Found
+    alternatives:
+      Not Found: No invoice has this id.
+  - name: Void Invoice
+    description: Cancels an invoice that was issued by mistake or whose order was cancelled.
+    steps:
+    - reads: Invoice
+    - modifies: Invoice
+    - produces: Invoice Voided
+    result: Voided
+    alternatives:
+      Not Found: No invoice has this id.
+      Already Voided: The invoice was voided earlier.
+    behavior: The invoice stays on record with status voided; the reason is stored on it.
+    guardrails: [Invoices Are Never Deleted]
+  dataObjects:
+  - name: Invoice
+    description: A bill for one order, from issue to void.
+    schema:
+      id: uuid
+      orderId: uuid
+      customerId: string
+      total: decimal
+      status: enum(issued, voided)
+      voidReason: string?
+  events:
+  - name: Invoice Issued
+    description: An invoice was created for a placed order.
+    schema: {invoiceId: uuid, orderId: uuid, total: decimal}
+  - name: Invoice Failed
+    description: An invoice couldn't be created because its order no longer exists.
+    schema: {orderId: uuid}
+  - name: Invoice Voided
+    description: An invoice was voided.
+    schema: {invoiceId: uuid, reason: string}
+  components:
+  - name: billing-service
+    description: Issues, stores and voids invoices.
+    performs: [Create Invoice, Fetch Invoice, Void Invoice]
+    owns: [Invoice]
+    produces: [Invoice Issued, Invoice Failed, Invoice Voided]
+    implements: [Billing API]
+    rationale: [Finance Staff needs, "principle 4: data has a home"]
+  interfaces:
+  - name: Billing API
+    description: Finance staff looking invoices up and voiding them.
+    serves: Finance Staff
+    binding: {style: OpenAPI, base: /billing/v1/invoices, auth: staff SSO, errors: RFC 7807}
+    implementedBy: billing-service
+    rationale: [Finance Staff needs, Staff Sign-On]
+    exposes:
+      Fetch Invoice:
+        operation: GET /{id}
+        request: {id: uuid}
+        responses:
+          Found: {code: 200, body: Invoice}
+          Not Found: 404
+      Void Invoice:
+        operation: POST /{id}/void
+        request: {id: uuid, reason: string}
+        responses:
+          Voided: {code: 200, body: "Invoice { id, status }"}
+          Not Found: 404
+          Already Voided: 409
+
+Actor:
+- name: Finance Staff
+  description: Back-office staff reconciling invoices.
+  uses: [Fetch Invoice, Void Invoice]
+  requirements: [Staff Sign-On]
+
+Requirement:
+- name: Staff Sign-On
+  description: Staff work under their corporate identity.
+
+Guardrail:
+- name: Invoices Are Never Deleted
+  description: An invoice is never removed, only voided, so the books can always be reconstructed.
+
+# Half-open: Order Management as Billing sees it. Billing is an Actor of this
+# System, so the Interface serves Billing, and Billing never sees its insides.
+Neighbour:
+- name: Order Management
+  events:
+  - name: Order Placed
+  functions:
+  - name: Fetch Order
+    result: Found
+    alternatives: {Not Found: No order has this id.}
+  interfaces:
+  - name: Order gRPC
+    serves: Billing
+    exposes: [Fetch Order]

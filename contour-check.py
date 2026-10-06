@@ -38,6 +38,10 @@ def check(model):
     comps = {c["name"]: c for c in S.get("components", [])}
     ifaces = {i["name"]: i for i in S.get("interfaces", [])}
     actors = {a["name"]: a for a in model.get("Actor", [])}
+    nb = model.get("Neighbour", [])
+    nb_funcs = {f"{n['name']}/{f['name']}": f for n in nb for f in n.get("functions", [])}
+    nb_ifaces = {i["name"]: (n, i) for n in nb for i in n.get("interfaces", [])}
+    nb_events = {e["name"] for n in nb for e in n.get("events", [])}
     reqs = {r["name"] for r in model.get("Requirement", [])}
     grds = {g["name"] for g in model.get("Guardrail", [])}
 
@@ -63,7 +67,8 @@ def check(model):
         for i, st in enumerate(f.get("steps") or []):
             if "consumes" in st and i:
                 bad("R2", f"{f['name']}: consumes is not the first step")
-            for verb, pool in (("calls", funcs), ("reads", data), ("modifies", data), ("produces", events)):
+            for verb, pool in (("calls", funcs), ("reads", data), ("modifies", data), ("produces", events),
+                               ("consumes", events | nb_events)):
                 if verb in st and st[verb] not in pool:
                     bad("R2", f"{f['name']}: {verb} unknown {st[verb]}")
             if "calls" in st and st["calls"] in funcs:
@@ -77,6 +82,21 @@ def check(model):
                 continue
             iname, _, target = st["uses"].partition(" / ")
             mapped = st.get("becomes") or {}
+            if iname in nb_ifaces:
+                owner_sys, ni = nb_ifaces[iname]
+                if ni.get("serves") != S["name"]:
+                    bad("R2", f"{f['name']}: {iname} serves {ni.get('serves')}, not {S['name']}")
+                elif target not in exposed(ni):
+                    bad("R2", f"{f['name']}: {iname} doesn't expose {target}")
+                tf = nb_funcs.get(f"{owner_sys['name']}/{target}")
+                for k, v in mapped.items():
+                    if tf and k != "Unreachable" and k not in outcomes(tf):
+                        bad("R2", f"{f['name']}: {k} is not an outcome of {target}")
+                    if v not in alts:
+                        bad("R2", f"{f['name']}: {v} is not one of its alternatives")
+                if "Unreachable" not in mapped:
+                    bad("R2", f"{f['name']}: uses {st['uses']} without mapping Unreachable")
+                continue
             if iname not in ifaces:
                 bad("R2", f"{f['name']}: uses unknown Interface {iname}")
             elif target not in exposed(ifaces[iname]):
