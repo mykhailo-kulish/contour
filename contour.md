@@ -4,7 +4,7 @@
 
 ### Defining logical boundaries — functionality, data, and interfaces — as a business-readable structure for propagating change into code
 
-**Version 0.4** — working draft
+**Version 0.5** — working draft
 
 **Author:** Mykhailo Kulish ([LinkedIn](https://www.linkedin.com/in/mkulish/))
 
@@ -33,11 +33,17 @@ specification and its boundary.
 What gets modeled is a **System** — the business-level application a
 stakeholder would name — which exists to serve its **Actors**: people,
 organizations, other systems. What it offers them is a set of
-**Functions**, reached through **Interfaces**. How it is built is a
-separate decision: **Components** implement the System, grouping its
-Functions and the data they keep by lifecycle, maintainability and
-availability. The Component is what gets drawn; the System is what it
-is for.
+**Functions**, and each Actor's record names the ones it **uses**. How
+it is built is a separate decision: **Components** implement the
+System, grouping its Functions and the data they keep by lifecycle,
+maintainability and availability, and **Interfaces** are the channels
+through which its callers reach the Functions. A model is complete
+with all of this filled in, but it does not start that way, and it can
+be started from either end: **top-down**, from the Actors and the
+Functions they need, or **bottom-up**, from the Components and
+Interfaces found in source code. One checker reads the model either
+way and reports what is *wrong* separately from what is *not filled in
+yet* (Section 3.7).
 
 The paper claims two things: that a readable Contour record is enough to
 propagate a described change into an existing codebase correctly, and
@@ -78,6 +84,7 @@ change into code correctly.
    4. [Event-Driven Causal Chains](#34-event-driven-causal-chains)
    5. [Naming Conventions](#35-naming-conventions)
    6. [Requirements and Guardrails](#36-requirements-and-guardrails)
+   7. [One Model, Two Directions](#37-one-model-two-directions)
 4. [Notation](#4-notation)
 5. [Worked Example](#5-worked-example)
 6. [Limitations and Open Questions](#6-limitations-and-open-questions)
@@ -145,12 +152,14 @@ Contour elements. Lowercase "system" is the ordinary word.
    as a whole, grouping Functions and Data Objects that belong together
    for lifecycle, maintainability and availability reasons. What the
    System offers comes first; how it is split into Components is a design
-   decision that can change without changing what is offered. A System
+   decision that can change without changing what is offered — and one
+   that a model need not have made yet: a model with no Components says
+   what the System does, not how it is split. A System
    of one Component is normal; a System of several is common. Neither
    boundary is a size limit — a Component can be a small
    service or a large monolith, so long as it shares one lifecycle. Each
-   diagram centres on one Component: everything else is either something
-   it contains or something in its environment. The one-page constraint
+   one-page diagram centres on one System: everything else is either
+   something it contains or something in its environment. The one-page constraint
    governs the diagram, not the real size of what it depicts or the
    record beneath it.
 
@@ -159,8 +168,10 @@ Contour elements. Lowercase "system" is the ordinary word.
    an extensible one. The record tier may still name things that are never
    drawn. Where a concept can be *derived* rather than declared, it is:
    a Function has no separate "service" or "interface" counterpart; it is
-   externally accessible exactly when one of its Component's Interfaces
-   exposes it, and private otherwise.
+   externally accessible exactly when an Interface
+   exposes it, and private otherwise. Likewise an Interface declares no
+   owner: it sits on whichever Component performs the Functions it
+   exposes.
 
 3. **Logical relations, not communication mechanisms.** Contour records
    *that* one thing invokes, reaches, or reacts to another — never how
@@ -216,6 +227,19 @@ Contour elements. Lowercase "system" is the ordinary word.
    named as a *Requirement*; where its implementation must stop, as a
    *Guardrail* (Section 3.6).
 
+9. **One model, two directions.** There is one model at one level; its
+   elements are peers, not layers. What varies is where the filling-in
+   starts: top-down, from the Actors and the Functions they use —
+   Components and Interfaces derived later from Requirements,
+   Guardrails and those uses — or bottom-up, from the Components,
+   Interfaces and handlers found in code — the Actors' uses and the
+   reasons recovered afterwards. Both directions arrive at the same
+   model, so a model in progress is simply incomplete from one side.
+   What is *wrong* (a contradiction) is kept distinct from what is
+   *missing* (a gap), and every structural piece carries a `rationale`
+   naming why it exists, so the derivation is auditable in either
+   direction (Section 3.7).
+
 ---
 
 ## 3. Core Metamodel
@@ -224,13 +248,13 @@ Contour defines **seven element types**:
 
 | # | Element | Meaning |
 |---|---------|---------|
-| 1 | **System** | The business-level application a stakeholder would name — "Order Management", "Payments". It exists to serve its Actors: what it offers them is the Functions its Interfaces expose. A System groups the Components that implement it and performs no work of its own: everything a System does, one of its Components does. A System may contain a single Component, and often contains several |
+| 1 | **System** | The business-level application a stakeholder would name — "Order Management", "Payments". It exists to serve its Actors: what it offers them is its Functions, reached through its Interfaces. A System groups the Components that implement it and performs no work of its own: everything a System does, one of its Components does. A System may contain a single Component, often contains several — and, in a model begun top-down, may not be split into Components yet |
 | 2 | **Component** | The implementation of part of a System, with one lifecycle: whatever is built, versioned, released, and retired as a whole, usually by one owning team. It groups the Functions it performs and the Data Objects it owns because they belong together — they change together, are maintained by the same team, or must be available together. The consequence is that it deploys as one artifact — a single service, or a monolith, however large. Anything with more than one lifecycle is modeled as more than one Component, tied together by `depends-on`. Which Component performs a Function is an allocation decision: moving it changes `performs`, not the Function's record. This is the unit most modeling happens at |
 | 3 | **Function** | A capability the Component performs — internal or external. It is externally accessible when one of its Component's Interfaces exposes it, and private otherwise. A Function is described in business terms only — what it does and how it can end; how it is reached is its Interfaces' concern. A Function can consume and react to an Event, produce an Event, call another Function in the same Component, or use another Component's external Function. It is the minimal unit of Component behavior — but not smaller than an actual piece of business-related work: `Calculate Total` is a Function; `Parse Input` is an implementation step inside one, and belongs in that Function's `steps`/`behavior` record (Section 3.3), not on the diagram |
-| 4 | **Interface** | A channel through which outsiders reach the Component. It belongs to one Component, **serves** exactly one caller — an Actor, or other Components of this or another System — carries the technology in its `binding`, and **exposes** a set of the Component's Functions, with what the caller sends and gets back for each (Section 3.3) |
+| 4 | **Interface** | A channel through which one caller reaches Functions the System offers. It belongs to the System, **serves** exactly one caller — an Actor, or the keyword `System` for this System's own Components — carries the technology in its `binding`, and **exposes** a set of Functions, with what the caller sends and gets back for each (Section 3.3). It declares no Component: it sits on the one that performs what it exposes |
 | 5 | **Event** | A notification to the environment that a Component's state has changed — "Payment Completed", "Order Placed". An Event reports something that has already happened, which is why Event names are written in the past tense (Section 3.5) |
 | 6 | **Data Object** | A named piece of information the Component owns and keeps. Data that only travels across a boundary — a request, a response — is not a Data Object; it is described inline in the Interface where it crosses (Section 3.3) |
-| 7 | **Actor** | A person, organization, or external system the System serves. The relation is one-way: an Actor uses the System through an Interface, and the System never calls an Actor. A system the modeled System *depends on* is therefore not an Actor: a Function reaches it like any other Component, through that Component's Interface (Section 3.3). An Actor is a *role with distinct access*, not a job title: two job titles that reach a Component the same way are one Actor, and the difference between them belongs in the Actor's `description` |
+| 7 | **Actor** | A person, organization, or other System the modeled System serves. The relation is one-way: an Actor uses the System's Functions, and the System never calls an Actor. Its record names the Functions it `uses` — the business statement an Interface is later designed to satisfy. A System the modeled System *depends on* is not an Actor of it: the dependency runs the other way, as a Function using the neighbour System's Interface — in whose model *this* System is the Actor (Sections 3.3, 3.7). An Actor is a *role with distinct access*, not a job title: two job titles with the same access are one Actor, and the difference between them belongs in the Actor's `description` |
 
 and **nine relationship types** (three of which pair an inverse verb — `produces`/`consumes`, `reads`/`modifies`, `owns`/`references`):
 
@@ -238,9 +262,9 @@ and **nine relationship types** (three of which pair an inverse verb — `produc
 |---|---|---|
 | **groups** | System → Component | This Component is one of those implementing the System. A Component belongs to exactly one System |
 | **performs** | Component → Function | This Component implements this Function — an allocation of the System's work to one lifecycle unit |
-| **exposes** | Interface → Function | The Interface makes this Function reachable to the caller it serves. A Function no Interface exposes is private. An Interface exposes only Functions of its own Component |
-| **uses** | Actor → Interface, or Function → Function through an Interface | An Actor reaches a Component through an Interface that serves it; this is the only direction an Actor takes part in. A Function of *another* Component — in the same System or another one — reaches a Function through an Interface that serves `Components` and exposes it; in its `steps` it names both, as `Interface / Function`. A Function never `uses` a Function of its own Component; inside a Component the relation is `calls` |
-| **calls** | Function → Function | One Function invokes another *within the same Component*, with no Interface in between. Order is not part of this edge — see the note below |
+| **exposes** | Interface → Function | The Interface makes this Function reachable to the caller it serves. A Function no Interface exposes is private. An Interface exposes only Functions one Component performs — which is how its Component is derived |
+| **uses** | Actor → Function, or Function → Function, through an Interface | An Actor uses the System's Functions; its record lists them, and once an Interface serving it exists, the edge is drawn Actor → Interface — the same rollup as principle 5. This is the only direction an Actor takes part in. A Function of *another* Component of the same System reaches a Function through an Interface that serves `System`; a Function reaching *another System* goes through that System's Interface, which serves this System as its Actor. Either way the step names both, as `Interface / Function`. A Function never `uses` a Function of its own Component; inside a Component the relation is `calls` |
+| **calls** | Function → Function | One Function invokes another *within the same Component* — or within a System not yet split into Components — with no Interface in between. An allocation that would put caller and callee in different Components contradicts the edge: that is a redesign — one Component, or an Interface and a `uses` step — never a silent rewrite (Section 3.7). Order is not part of this edge — see the note below |
 | **produces / consumes** | Component → Event, or Function → Event | At Component level, a Context-view summary: the component raises or reacts to this event. At Function level, the precise cause: which specific Function produces it, or reacts to it — see Section 3.4 |
 | **reads / modifies** | Function → Data Object | A Function's actual read or write access to a Data Object owned by its *own* Component — principle 4 at Function-level precision. A Function in another Component can only reach that data through an Event it consumes or an external Function it uses |
 | **owns / references** | Component → Data Object | `owns`: this Component is the Data Object's single home. `references`: a Context-view summary that this Component obtains the Data Object *from its owner* — through one of the owner's external Functions or an Event it produces. It is never direct access; the Functionality-view chain underneath it is a `uses` edge to an external Function that `reads` it, or a `consumes` edge on an Event that carries it. A `references` edge that rests on a `uses` edge implies a `depends-on` edge to the owner |
@@ -315,7 +339,8 @@ diagram rather than fixed for the whole framework:
   the precise, drill-down view: "*why*, specifically, does Component A
   depend on Component B?" Answer: because one of A's Functions `uses` one
   of B's external Functions, through one of B's Interfaces that serves
-  other Components.
+  this caller — `System` inside one System, the calling System by name
+  across two.
 
 ```mermaid
 graph LR
@@ -339,13 +364,15 @@ should be *explainable* by a `uses` chain underneath it — "soft
 consistency," expected but not enforced (Section 6).
 
 **The default one-page diagram combines the two.** In practice, and in
-every diagram in this paper, a Component diagram draws the focal
-Component *opened* — its Interfaces on its boundary, its Functions with
-external ones marked, the Data Objects it owns, the Events it produces —
-and every neighbouring Component *half-open*: closed, except for the
-Functions that take part in a `uses` edge with the focal Component,
-which are drawn on the neighbour's boundary. Actors `use` the focal
-Component's Interfaces. To keep the page small, which Interfaces expose a
+every diagram in this paper, the one-page diagram draws the focal
+System *opened* — its Components with their Interfaces on their
+boundaries, its Functions with external ones marked, the Data Objects
+each Component owns, the Events it produces — and every neighbouring
+System *half-open*: closed, except for the Interfaces and Functions
+that take part in a `uses` edge with the focal System, which are drawn
+on the neighbour's boundary. The same half-open view exists in the
+record tier, as the model's `Neighbour` block (Section 3.7). Actors
+`use` the focal System's Interfaces. To keep the page small, which Interfaces expose a
 Function is shown as a label on the Function rather than as `exposes`
 edges, and a cross-Component call is drawn Function to Function with the
 Interface it goes through as the edge's label. Every cross-Component call
@@ -406,11 +433,17 @@ than per element:
 | | `schema` | Payload shape |
 | **System** | `description` | Plain-language statement of the business capability this System delivers |
 | **Interface** | `description` | Plain-language summary of what this channel is for |
-| | `serves` | The one caller it is for: an Actor, or `Components` |
+| | `serves` | The one caller it is for: an Actor, or `System` for this System's own Components |
 | | `binding` | Its technology: `style`, and whatever keys that style's binding defines |
 | | `exposes` | The Functions it makes reachable, each with its `operation`, `request` and `responses` (see below) |
+| | `rationale` | Why this channel exists: Actor uses, Requirements, Guardrails, principles, or an allocation (Section 3.7) |
 | **Component** | `description` | Plain-language purpose of the Component |
+| | `performs` | The System's Functions allocated to it — each Function has exactly one performer |
+| | `owns` | The Data Objects it is the single home of (principle 4) |
+| | `produces` | The Events it raises — each where its producing Function runs |
+| | `rationale` | Why this lifecycle boundary exists (Section 3.7) |
 | **Actor** | `description` | Plain-language role, and the job titles or systems that play it |
+| | `uses` | The System's Functions this Actor uses — what its Interfaces are designed to expose (Section 3.7) |
 
 A sketch of what this looks like as data (illustrative, not the final
 syntax — the serialization used in the experiments is described in
@@ -440,7 +473,7 @@ Function: Validate Order
   result: All Available
   alternatives:
     Short: Some items have less stock than ordered.
-    Stock Unknown: Inventory Service couldn't be reached.
+    Stock Unknown: Inventory couldn't be reached.
 
 Function: Calculate Total
   description: Computes the order total from its line items.
@@ -516,7 +549,7 @@ test per outcome.
       when: The order no longer exists.
       effects:
         - produces: Invoice Failed
-    Deferred: Order Service couldn't be reached; the Event is processed again later.
+    Deferred: Order Management couldn't be reached; the Event is processed again later.
 ```
 
 An alternative is reached either by its own condition, or by a
@@ -559,14 +592,17 @@ the notation; it is defined by the binding (below).
 
 #### Interfaces
 
-An **Interface** is a channel through which outsiders reach a Component.
-It is an element in its own right — drawn on its Component's boundary
+An **Interface** is a channel through which one caller reaches
+Functions the System offers. It is an element in its own right — drawn
+on the boundary of the Component that performs what it exposes
 (Section 4) — and its record answers three questions:
 
 - **Who is it for?** — **`serves`** names exactly one caller: an Actor,
-  or the reserved word `Components`, which stands for any Function of
-  another Component — in this System or in another one. Because it must be an existing Actor or
-  `Components`, a renamed or misspelled caller fails a check rather than
+  or the reserved word `System`, which stands for this System's own
+  Components — a Function of one Component reaching a Function of
+  another. A caller that is another System is never `System`: it is an
+  Actor, by name. Because `serves` must be an existing Actor or
+  `System`, a renamed or misspelled caller fails a check rather than
   silently breaking the link.
 - **Through what technology?** — **`binding`** holds it in one block.
   Contour defines a single key in it, **`style`** (OpenAPI, gRPC, MCP,
@@ -592,11 +628,10 @@ element can; they apply to every Function reached through it.
 
 ```yaml
 Interface: Customer API
-  component: Order Service
   description: Customers placing, tracking and cancelling their own orders.
   serves: Customer
   binding: { style: OpenAPI, base: /v1/orders, auth: customer token, errors: RFC 7807 }
-  guardrails: [Own Orders Only]
+  rationale: [Customer needs, Web And Mobile]
   exposes:
     Fetch Order:
       operation: GET /{id}
@@ -606,10 +641,10 @@ Interface: Customer API
         Not Found: 404
 
 Interface: Order gRPC
-  component: Order Service
-  description: Other Components reading orders.
-  serves: Components
+  description: Billing reading orders.
+  serves: Billing
   binding: { style: gRPC, service: orders.v1.OrderService, auth: mTLS service identity }
+  rationale: [Billing needs, Service To Service]
   exposes:
     Fetch Order:
       operation: GetOrder
@@ -623,10 +658,15 @@ The keys after `style` in each `binding`, and the form of each
 `operation` and code, belong to the style's binding, not to Contour.
 
 A Function is **external** exactly when some Interface exposes it, and
-private otherwise. A Component may have several Interfaces, and an Actor
-may use several — a partner with a REST API and a gRPC feed is two
-Interfaces serving the same Actor. Each Interface, though, serves one
-caller: two Actors with identical access are one role (Section 3.5).
+private otherwise. An Interface names no Component; it *sits on* one —
+the one that performs every Function it exposes. One Interface
+spanning two Components is a contradiction, and the fix is never to
+widen the Interface: a Component that needs another's Function
+performs a Function of its own, which `uses` the other's Interface. A
+Component may host several Interfaces, and an Actor may use several —
+a partner with a REST API and a gRPC feed is two Interfaces serving
+the same Actor. Each Interface, though, serves one caller: two Actors
+with identical access are one role (Section 3.5).
 
 **Requests and responses are described where they cross.** They are
 inline shapes, not Data Objects: they may reference the Component's own
@@ -649,12 +689,16 @@ outside it invokes an `operation` of an Interface. The two words are
 kept apart on purpose.
 
 **A `uses` step names the Interface it goes through:** `uses: Inventory
-gRPC / Check Stock`. The Interface must serve `Components` and expose
-the target, and since an Interface belongs to exactly one Component, the
-Component is named too. A cross-Component call is therefore precise to
-the Function and explicit about the channel — at the cost that moving a
-Function to a different Interface touches every step that uses it, which
-a check catches.
+gRPC / Check Stock`. Within one System, the Interface must serve
+`System` and expose the target; across Systems, it is the neighbour
+System's Interface, which serves the calling System as its Actor, and
+it appears in the model's `Neighbour` block (Section 3.7) — a step
+never names a System, Function or Interface that doesn't exist. Since
+an Interface sits on exactly one Component, the Component is reached
+too. A cross-Component call is therefore precise to the Function and
+explicit about the channel — at the cost that moving a Function to a
+different Interface touches every step that uses it, which a check
+catches.
 
 #### What a Function can work with
 
@@ -716,27 +760,43 @@ is checked the same way (Section 3.6).
 
 #### Consistency checks
 
-Because Interfaces, steps and outcomes are structured, their consistency
-is mechanically checkable rather than a matter of judgement. The core
-checks are style-neutral; each binding adds its own:
+Because Interfaces, steps and outcomes are structured, their
+consistency is mechanically checkable rather than a matter of
+judgement. These are the checks that hold whatever state the model is
+in — a violation is a **contradiction**, something wrong however the
+model was started, as opposed to a **gap**, something not filled in
+yet; Section 3.7 draws that distinction and lists the gaps. The core
+contradictions are style-neutral; each binding adds its own:
 
-1. Every Interface belongs to one Component and `serves` an existing
-   Actor or `Components`; it exposes only Functions that Component
-   performs.
+1. Every Interface `serves` an existing Actor or `System`, and exposes
+   only Functions one Component performs — the Component it thereby
+   sits on.
 2. Each exposed Function's `responses` cover its `result` and every
    alternative, and only those — unless the binding's conventions cover
    them and `exposes` lists names only.
 3. No two Functions share an `operation` within one Interface.
-4. Requests and response bodies reference only the Component's own Data
-   Objects, their nested types, or projections of them.
-5. A `uses` step names an Interface that serves `Components` and
-   exposes the target Function.
+4. Requests and response bodies reference only the owning Component's
+   own Data Objects, their nested types, or projections of them.
+5. A `uses` step names an Interface that exposes the target Function
+   and serves the caller: `System` within one System, the calling
+   System by name across two.
 6. `becomes` keys are outcomes of the callee, or `Unreachable` on a
    `uses`; `becomes` values are alternatives of the calling Function.
 7. Every `uses` step maps `Unreachable`.
 8. `consumes` appears only as the first step, at most once, on an Event
    another Component produces; a Function that has it is exposed by no
-   Interface — it is started by an Event or by a caller, not both.
+   Interface and used by no Actor — it is started by an Event, not by a
+   caller.
+9. A `calls` step stays within one Component; allocation never splits
+   it (principle 9 — the redesign rule, Section 3.7).
+10. Allocation is single: one performer per Function, one owner per
+    Data Object, one producing Component per Event; `reads`/`modifies`
+    stay with the owner, and an Event is produced where its Function
+    runs.
+
+The reference implementation, `contour-check.py` in this repository,
+runs every check above and every gap in Section 3.7 against a model
+file and exits non-zero only on contradictions.
 
 ### 3.4 Event-Driven Causal Chains
 
@@ -748,8 +808,8 @@ doing work that touches a Data Object, and possibly producing another
 Event in turn. Because an Event marks a crossing *between* Components
 (principle 3), the consuming Function is always in a different Component
 from the producing one. The worked example (Section 5) has `Reserve
-Stock`, on Inventory Service, consuming an Event produced by Order
-Service. Its record opens with the subscription:
+Stock`, in the Inventory System's own model, consuming an Event
+produced by Order Management. Its record opens with the subscription:
 
 ```yaml
 Function: Reserve Stock
@@ -893,9 +953,9 @@ Requirement: Minimum Order Value
 
 Guardrail: Payment Logic Stays in Billing
   description: >
-    Order Service must not compute, authorize, or settle payments. It
-    uses Billing Service's external Functions and treats the result
-    as opaque.
+    Order Management must not compute, authorize, or settle payments.
+    It uses the Billing System's external Functions and treats the
+    result as opaque.
 
 Function: Place Order
   description: Accepts a new order request, validates it, and creates it.
@@ -942,6 +1002,93 @@ references is respected — by a test asserting the rule directly, or by
 grading the result against the description. A Requirement or Guardrail
 that fails that check isn't a documentation gap; it's a failed test, the
 same as a structural or contractual mismatch would be.
+
+### 3.7 One Model, Two Directions
+
+Principle 9 said a model has no layers, only a place where the
+filling-in starts. This section gives that claim its machinery: what
+each direction writes down, how the other recovers it, and how a
+checker tells a wrong model from an unfinished one.
+
+| | Top-down | Bottom-up |
+|---|---|---|
+| Starts from | Business needs | Source code |
+| Filled in first | Actors and the Functions they `use`, Functions, Data Objects, Events, Requirements, Guardrails | Components (deployables), Interfaces (entry points), Functions (handlers), Data Objects (stores) |
+| Recovered later | Components and Interfaces — how the System is split and reached | Actors' `uses`, and the Requirements and Guardrails that explain the code's shape |
+| Typical use | Building a new System from a specification | Documenting or changing an existing one; legacy extraction |
+
+Both directions arrive at the same complete model. This fits the
+paper's two claims: building from a specification is the top-down
+direction run to completion, and propagating a change into an
+existing codebase starts bottom-up (recover the model) and continues
+top-down (change the statement of needs, then the code).
+
+**An Actor declares the Functions it `uses`.** This is the record of
+the Actor → Function edge, and the business statement an Interface is
+designed to satisfy: once an Interface serves the Actor, what it
+`exposes` must equal what the Actor `uses`. For an Interface serving
+`System`, the counterpart statement already exists in the model — the
+`uses` steps of the Functions that call it — so what it exposes must
+equal what those steps use. Either way, a channel offers exactly what
+its caller needs, and the redundancy between the two statements is
+what lets the directions be checked against each other.
+
+**Components and Interfaces carry a `rationale`** — the Actor uses,
+Requirements, Guardrails, principles or allocation that explain why
+this piece of structure exists. Top-down, it records what the piece
+was derived from; bottom-up, it is recovered — and a Component or
+Interface whose rationale cannot be recovered is a finding in itself:
+either a missing Requirement, or a design worth questioning.
+
+**A `Neighbour` block holds the half-open view of another System**:
+only the Events, Functions (name and outcomes) and Interfaces this
+model touches. A neighbour's Interface serves this System as its
+Actor — the mirror of the rule that another System calling in is an
+Actor here. Nothing else about the neighbour is restated; its own
+model holds the rest, and the two models meet at the Interface.
+
+**Completing a model, from either side.** Top-down, from needs to
+structure: one Interface per Actor and channel, the binding chosen by
+the Actor's channel Requirement, exposing exactly what the Actor
+uses; Components derived from Requirements and Guardrails (what must
+change, scale or be released apart is split; what a Guardrail and
+principle 4 keep together stays together); everything allocated
+exactly once; and where allocation splits a `calls` edge across
+Components, a redesign — expose the callee on an Interface serving
+`System` and rewrite the step as `uses`, deciding what `Unreachable`
+becomes, or put both Functions in one Component. The redesign is a
+decision, not a mechanical rewrite, because the caller gains a
+failure it didn't have. Bottom-up, from code to needs: deployables
+become Components, entry points Interfaces, handlers Functions,
+stores Data Objects; an Interface's caller becomes an Actor unless it
+is a Component of this System; an Actor's `uses` is read off what the
+Interfaces serving it expose, reviewed for anything exposed by
+accident; and rationale is recovered, never invented.
+
+**Contradictions and gaps.** A checker reads one model and reports
+two kinds of finding, and the distinction is what makes one model
+serve both directions. A **contradiction** is wrong however the model
+was started — an unresolved reference, a Data Object with two owners,
+a response map missing an outcome, an Interface spanning two
+Components (Section 3.3's list). A **gap** is not filled in yet, and
+each gap names the next step from each direction: no Components at
+all; a Function, Data Object or Event not yet allocated; an Interface
+none of whose Functions is performed yet; an Actor with Interfaces
+but no `uses`, or `uses` but no Interface; a Function an Actor uses
+that nothing serving it exposes, or the reverse; a Function exposed
+to `System` that no step uses; a Component or Interface without
+rationale. A gap prints like this:
+
+```
+GAP [N3] Actor Billing uses Fetch Order, but no Interface serving it exposes it
+      top-down:  expose Fetch Order on an Interface serving Billing
+      bottom-up: check whether Billing really needs it; if not, drop it from `uses`
+```
+
+A model begun top-down therefore starts life with a handful of gaps
+and no contradictions, and finishing it is working the gap list down
+to zero — same for bottom-up, from the other side. Section 5 shows
+both runs on the worked example.
 
 ---
 
@@ -991,8 +1138,9 @@ spells out what they condense:
   caller → Interface → `exposes` → Function.
 
 An Actor's `uses` edge always ends at an Interface. A neighbouring
-Component is drawn half-open (Section 3.2): its Functions that take part
-in a `uses` edge with the focal Component sit on its boundary.
+System is drawn half-open (Section 3.2): the Interfaces and Functions
+that take part in a `uses` edge with the focal System sit on its
+boundary.
 
 Every diagram in this paper follows these shapes, so Sections 3.1 and 5
 double as a notation reference.
@@ -1001,97 +1149,116 @@ double as a notation reference.
 
 ## 5. Worked Example
 
-A small **Order Service** in an e-commerce context, drawn as the default
-one-page diagram of Section 3.2 — Order Service opened, its neighbours
-half-open:
+The **Order Management** System in an e-commerce context, drawn as the
+default one-page diagram of Section 3.2 — the System opened, its
+neighbour half-open. The same model, as data, is
+[`order-management.yaml`](order-management.yaml) in this repository,
+and every finding quoted below is the checker's output on it.
 
 ```mermaid
 graph LR
     Customer([Actor: Customer])
     Staff([Actor: Support Staff])
-    OrderMgmt[System: Order Management] -.->|groups| OrderSvc
+    Billing([Actor: Billing])
 
-    subgraph OrderSvc [Component: Order Service]
-        CustAPI(("Customer API"))
-        OpsAPI(("Operations API"))
-        GrpcAPI(("Order gRPC"))
-        PlaceOrder["Function: Place Order<br/>· Customer API"]:::ext
-        FetchOrder["Function: Fetch Order<br/>· Customer API, Operations API, Order gRPC"]:::ext
-        CancelOwn["Function: Cancel Own Order<br/>· Customer API"]:::ext
-        CancelFor["Function: Cancel Order for Customer<br/>· Operations API"]:::ext
-        ValidateOrder[Function: Validate Order]
-        CalcTotal[Function: Calculate Total]
+    subgraph OM [System: Order Management]
+        subgraph OrderSvc [Component: order-service]
+            CustAPI(("Customer API"))
+            OpsAPI(("Operations API"))
+            GrpcAPI(("Order gRPC"))
+            PlaceOrder["Function: Place Order<br/>· Customer API"]:::ext
+            FetchOrder["Function: Fetch Order<br/>· Customer API, Operations API, Order gRPC"]:::ext
+            CancelOwn["Function: Cancel Own Order<br/>· Customer API"]:::ext
+            CancelFor["Function: Cancel Order for Customer<br/>· Operations API"]:::ext
+            ValidateOrder[Function: Validate Order]
+            CalcTotal[Function: Calculate Total]
+            OrderData[(Data Object: Order)]
+        end
     end
 
-    subgraph Inventory [Component: Inventory Service]
-        CheckStock["Function: Check Stock<br/>· Inventory gRPC"]:::ext
-    end
-
-    subgraph Billing [Component: Billing Service]
-        CreateInvoice[Function: Create Invoice]
+    subgraph Inventory [System: Inventory]
+        InvGrpc(("Inventory gRPC"))
+        CheckStock["Function: Check Stock"]:::ext
     end
 
     Customer -->|uses| CustAPI
     Staff -->|uses| OpsAPI
+    Billing -->|uses| GrpcAPI
     PlaceOrder -->|calls| ValidateOrder
     PlaceOrder -->|calls| CalcTotal
     ValidateOrder -->|uses · Inventory gRPC| CheckStock
-    CreateInvoice -->|uses · Order gRPC| FetchOrder
     OrderSvc -->|produces| OrderPlaced{{Event: Order Placed}}
     OrderSvc -->|produces| OrderCancelled{{Event: Order Cancelled}}
-    OrderSvc -->|owns| OrderData[(Data Object: Order)]
-    Billing -->|consumes| OrderPlaced
-    Inventory -->|consumes| OrderPlaced
-    Billing -->|references| OrderData
 
     classDef ext stroke-width:3px
 ```
 
-Order Service has three Interfaces, each serving one caller: the
-**Customer API** (OpenAPI) for the Customer, the **Operations API**
-(OpenAPI) for Support Staff, and **Order gRPC** for other Components.
-Each Actor `uses` its Interface, and each external Function's label
-names the Interfaces that expose it. `Validate Order` and `Calculate
-Total` are exposed by no Interface, so they stay private — `Place Order`
-reaches them with `calls`, inside the Component.
+Order Management serves three Actors, each through one Interface: the
+**Customer** (a person) through the **Customer API**, **Support
+Staff** (a role) through the **Operations API**, and **Billing** —
+which is not a person but another System, and an Actor all the same —
+through **Order gRPC**. Each Actor's record lists the Functions it
+`uses`, and each Interface exposes exactly that list. `Validate Order`
+and `Calculate Total` are exposed by no Interface and used by no
+Actor, so they stay private — `Place Order` reaches them with
+`calls`, inside the Component.
 
-`Fetch Order` behaves the same for every caller, so all three Interfaces
-expose it; what each caller sees differs only in the Interface — the
-Customer gets four fields of an Order, Staff and other Components the
-whole record. Cancellation is split, because the rules differ: a
-customer may cancel only before shipment, support staff at any stage but
-with a reason. The two Functions are named for whose action they are
-(Section 3.5).
+`Fetch Order` behaves the same for every caller, so all three
+Interfaces expose it; what each caller sees differs only in the
+Interface — the Customer gets four fields of an Order, Staff and
+Billing the whole record. Cancellation is split, because the rules
+differ: a customer may cancel only before shipment, support staff at
+any stage but with a reason. The two Functions are named for whose
+action they are (Section 3.5).
 
-Both neighbours are half-open, and neither belongs to Order Management:
-they are Components of other Systems. That makes no difference to how a
-call into them is modeled — an Actor only ever uses the System, so a
-dependency on another System is a Function using another Component's
-Interface, exactly as inside one System. `Validate Order` uses
-Inventory's `Check Stock` through Inventory gRPC, and Billing's `Create Invoice` uses
-`Fetch Order` through Order gRPC — the latter is how Billing
-`references` Order data without reading it directly (principle 4). Each
-edge lands on the Function it reaches and names its Interface. Because
-those `uses` edges are drawn, the `depends-on` edges they would
-summarize are not. Inventory and Billing both consume `Order Placed`; an
-Event creates no `depends-on`, because the Event is the coupling.
+The neighbour runs in the other direction: Order Management *depends
+on* **Inventory**, so Inventory is not an Actor here — instead,
+`Validate Order` uses Inventory's Interface, in whose model Order
+Management is the Actor. Inventory appears in this model only
+half-open, as its `Neighbour` block. Billing also consumes
+`Order Placed`; an Event creates no `depends-on` and no Actor
+relation, because the Event is the coupling.
 
-Deployment nodes, infrastructure, and organizational elements are absent
-by design (principle 5).
+Deployment nodes, infrastructure, and organizational elements are
+absent by design (principle 5).
 
 **The records behind the diagram.** The keys after `style` in each
-`binding`, and the form of each `operation` and code, are illustrative —
-what an OpenAPI or gRPC binding might define (Section 3.3):
+`binding`, and the form of each `operation` and code, are
+illustrative — what an OpenAPI or gRPC binding might define (Section
+3.3):
 
 ```yaml
+System: Order Management
+  description: Takes customers' orders and carries them from placement to cancellation.
+  guardrails: [All Or Nothing]
+
 Actor: Customer
   description: A person buying from the shop.
+  uses: [Place Order, Fetch Order, Cancel Own Order]
+  requirements: [Web And Mobile]
+  guardrails: [Own Orders Only]
 
 Actor: Support Staff
   description: Customer-service and back-office staff handling order issues.
+  uses: [Fetch Order, Cancel Order for Customer]
+  requirements: [Staff Sign-On]
+
+Actor: Billing
+  description: The Billing System; invoices each order once it is placed.
+  uses: [Fetch Order]
+  requirements: [Service To Service]
 
 Requirement: Minimum Order Value
   description: An order must total at least $1.00 before it can be placed.
+
+Requirement: Web And Mobile
+  description: Customers reach the shop from a browser and the mobile app.
+
+Requirement: Staff Sign-On
+  description: Staff work under their corporate identity.
+
+Requirement: Service To Service
+  description: Other Systems call with their own service identity.
 
 Guardrail: All Or Nothing
   description: >
@@ -1101,13 +1268,17 @@ Guardrail: All Or Nothing
 
 Guardrail: Own Orders Only
   description: >
-    Through the Customer API, a caller can read or change only orders
-    whose customerId matches their own identity. Other orders end as
-    Not Found, so their existence isn't revealed.
+    A customer can read or change only orders whose customerId matches
+    their own identity. Other orders end as Not Found, so their existence
+    isn't revealed.
 
-Component: Order Service
+Component: order-service
   description: Owns the order lifecycle from placement to cancellation.
-  guardrails: [All Or Nothing]
+  performs: [Place Order, Validate Order, Calculate Total, Fetch Order,
+             Cancel Own Order, Cancel Order for Customer]
+  owns: [Order]
+  produces: [Order Placed, Order Cancelled]
+  rationale: [All Or Nothing, "principle 4: data has a home"]
 
 DataObject: Order
   description: A customer's order, from placement through fulfillment.
@@ -1131,11 +1302,10 @@ Event: Order Cancelled
     reason: string?
 
 Interface: Customer API
-  component: Order Service
   description: Customers placing, tracking and cancelling their own orders via web and mobile.
   serves: Customer
   binding: { style: OpenAPI, base: /v1/orders, auth: customer token, errors: RFC 7807 }
-  guardrails: [Own Orders Only]
+  rationale: [Customer needs, Web And Mobile]
   exposes:
     Place Order:
       operation: POST /
@@ -1162,10 +1332,10 @@ Interface: Customer API
         Not Found:         404
 
 Interface: Operations API
-  component: Order Service
   description: Staff viewing and cancelling orders on a customer's behalf.
   serves: Support Staff
   binding: { style: OpenAPI, base: /ops/v1/orders, auth: staff SSO, errors: RFC 7807 }
+  rationale: [Support Staff needs, Staff Sign-On]
   exposes:
     Fetch Order:
       operation: GET /{id}
@@ -1184,10 +1354,10 @@ Interface: Operations API
         Not Found:         404
 
 Interface: Order gRPC
-  component: Order Service
-  description: Other Components reading orders.
-  serves: Components
+  description: Billing reading orders.
+  serves: Billing
   binding: { style: gRPC, service: orders.v1.OrderService, auth: mTLS service identity }
+  rationale: [Billing needs, Service To Service]
   exposes:
     Fetch Order:
       operation: GetOrder
@@ -1220,7 +1390,7 @@ Function: Validate Order
   result: All Available
   alternatives:
     Short: Some items have less stock than ordered.
-    Stock Unknown: Inventory Service couldn't be reached.
+    Stock Unknown: Inventory couldn't be reached.
 
 Function: Calculate Total
   description: Computes the order total from its line items.
@@ -1260,77 +1430,81 @@ Function: Cancel Order for Customer
   behavior: The reason is stored on the Order.
 ```
 
-The Functions carry no paths, codes or payloads; the Interfaces carry no
-business rules. `Place Order` never mentions a customer id: it works
-with the caller's identity, which the Customer API's `auth` establishes
-(Section 3.3). The two cancel Functions share `POST /{id}/cancel`
-without colliding, because they sit on different Interfaces with
-different bases. `All Or Nothing` sits on the Component, so every
-alternative of every Function leaves the order untouched unless it says
-otherwise.
+The Functions carry no paths, codes or payloads; the Interfaces carry
+no business rules. `Place Order` never mentions a customer id: it
+works with the caller's identity, which the Customer API's `auth`
+establishes (Section 3.3). The two cancel Functions share
+`POST /{id}/cancel` without colliding, because they sit on different
+Interfaces with different bases. `All Or Nothing` sits on the System,
+so every alternative of every Function leaves the order untouched
+unless it says otherwise. `Own Orders Only` sits on the Customer —
+the Actor — so it governs everything that Actor reaches, whichever
+Interface carries it. And no Interface declares a Component:
+each sits on `order-service` because that is who performs everything
+it exposes.
 
-**The neighbours, as far as the diagram touches them:**
+**The neighbour, half-open.** Inventory appears exactly as far as
+this model touches it — the `Neighbour` block of Section 3.7:
 
 ```yaml
-DataObject: Stock                          # Inventory Service
-  description: Quantity on hand per product.
-  schema: { productId: string, onHand: integer, reserved: integer }
+Neighbour: Inventory
+  functions:
+    - name: Check Stock
+      result: Available
+      alternatives: { Short: Some items have less stock than requested. }
+  interfaces:
+    - name: Inventory gRPC
+      serves: Order Management
+      exposes: [Check Stock]
+```
 
-Interface: Inventory gRPC
-  component: Inventory Service
-  description: Other Components checking and reserving stock.
-  serves: Components
-  binding: { style: gRPC, service: inventory.v1.InventoryService, auth: mTLS service identity }
-  exposes:
-    Check Stock:
-      operation: CheckStock
-      request:
-        items: "{ productId: string, quantity: integer }[1..]"
-      responses:
-        Available: OK
-        Short:     { code: OK, body: { shortItems: "{ productId: string, missing: integer }[1..]" } }
+`Inventory gRPC` serves *Order Management*: in Inventory's own model,
+this System is the Actor. The block is what lets `Validate Order`'s
+`uses` step resolve — a step never names a System, Function or
+Interface that doesn't exist — and what lets the checker verify the
+`becomes` mapping against `Check Stock`'s real outcomes.
 
-Function: Check Stock                      # Inventory Service
-  description: Reports whether requested quantities are available.
-  steps:
-    - reads: Stock
-  result: Available
-  alternatives:
-    Short: Some items have less stock than requested.
+**The other side of the mirror.** Billing is one line in this model —
+an Actor using `Fetch Order`. Billing's own model
+([`billing.yaml`](billing.yaml) in this repository) carries its side
+of the same dependency, with Order Management as *its* half-open
+neighbour:
 
-Function: Create Invoice                   # Billing Service
+```yaml
+Function: Create Invoice                   # Billing's model
   description: Issues an invoice for a newly placed order.
   steps:
     - consumes: Order Placed
     - uses: Order gRPC / Fetch Order
       becomes: { Not Found: Order Missing, Unreachable: Deferred }
     - modifies: Invoice
+    - produces: Invoice Issued
   result: Invoiced
   alternatives:
     Order Missing:
       when: The order no longer exists.
       effects:
         - produces: Invoice Failed
-    Deferred: Order Service couldn't be reached; the Event is processed again later.
+    Deferred: Order Management couldn't be reached; the Event is processed again later.
 ```
 
-`Check Stock` returns `OK` for both of its endings: a shortage is a
-successful answer to "is it available?", not a failure of the call.
-Inventory describes its own request rather than borrowing Order
-Service's line item — each Component describes its own boundary.
-`Create Invoice` shows the other side of `Unreachable`: when Order
-Service can't be reached, the business answer is to try again later,
-not to fail the invoice.
+The two models agree at the boundary: Order Management's `Order gRPC`
+serves Billing and exposes `Fetch Order`; Billing's step uses exactly
+that. `Create Invoice` also shows the other side of `Unreachable`:
+when Order Management can't be reached, the business answer is to try
+again later, not to fail the invoice. And it is how Billing obtains
+Order data without reading it — principle 4, across Systems: the only
+route to another System's data is an external Function or an Event.
 
 **Drilling into the dependency on Inventory.** The one-page diagram's
 `uses · Inventory gRPC` edge, drawn in full:
 
 ```mermaid
 graph LR
-    subgraph OrderSvc [Component: Order Service]
+    subgraph OM [System: Order Management]
         ValidateOrder[Function: Validate Order]
     end
-    subgraph Inventory [Component: Inventory Service]
+    subgraph Inventory [System: Inventory]
         InvGrpc(("Inventory gRPC"))
         CheckStock[Function: Check Stock]:::ext
     end
@@ -1359,13 +1533,30 @@ which becomes `Place Order`'s *Out Of Stock* and a 409. `Place Order`'s
 own alternative, `Below Minimum`, is drawn as an exit from the Function
 as a whole, its position governed by the guardrail.
 
-**Drilling into the event:** at Context level, Order Service `produces`
-`Order Placed` and Inventory `consumes` it. The Functionality-view chain
-underneath, on Inventory's side, is the one Section 3.4 showed: `Reserve
-Stock` is the specific Function reacting to `Order Placed`, and `Stock
-Reserved` is a second Event the one-page diagram never had to show.
+**Drilling into the event:** at Context level, Order Management
+`produces` `Order Placed`, and Billing and Inventory consume it. The
+Functionality-view chain underneath lives in each consumer's own
+model: on Billing's side it is `Create Invoice` above; on Inventory's,
+the `Reserve Stock` chain Section 3.4 showed, with `Stock Reserved` a
+second Event this page never had to draw.
+
+**The same model, started from either end.** Running the checker
+against three states of this model shows the two directions meeting
+(Section 3.7). Complete, it reports nothing. Stripped back to a
+top-down start — no Components, no Interfaces, the private calls still
+plain `calls` — it reports no contradictions and four gaps: no
+Components yet, and one per Actor with `uses` but no Interface, each
+gap naming the next step from each direction. Stripped the other way,
+to a bottom-up start — structure present, but no Actor `uses` and no
+`rationale` — it reports no contradictions and seven gaps: one per
+Actor whose Interfaces expose Functions it hasn't claimed, and one per
+Component and Interface that cannot yet say why it exists. Planted
+mistakes, by contrast, come back as contradictions wherever the model
+stands: a second owner for `Order`, a response map missing an outcome,
+an Interface exposing a Function performed elsewhere.
 
 ---
+
 
 ## 6. Limitations and Open Questions
 
@@ -1383,11 +1574,11 @@ the evidence in [`contour-experiments.md`](contour-experiments.md)
   intentionally out of scope. Contour models the lifecycle boundary a
   Component draws, not the infrastructure the resulting artifact runs on.
 - **Neither vocabulary has settled, and the relationship list less so.**
-  Both lists have changed as the precision bar rose — v0.4 kept
-  Interface but redefined it as the element that serves one caller and
-  carries all technical detail; whether nine relationship types are
-  sufficient for complex, multi-directional data-flow scenarios is
-  untested.
+  Both lists have changed as the precision bar rose — v0.4 redefined
+  Interface as the element that serves one caller and carries all
+  technical detail, and v0.5 moved it to the System and derived its
+  Component; whether nine relationship types are sufficient for
+  complex, multi-directional data-flow scenarios is untested.
 - **Endings are named, but not placed.** Experiment 3 is the first
   evidence that real systems need conditional structure: three of its
   six behavioral defects were branches the record could not hold
@@ -1421,7 +1612,7 @@ the evidence in [`contour-experiments.md`](contour-experiments.md)
 - **Shapes repeat across Interfaces.** Because requests and responses
   are described where they cross, the same shape can appear in several
   Interfaces — `{ id: uuid }` three times for `Fetch Order`, the
-  short-items shape in both Order Service's and Inventory's Interfaces.
+  short-items shape in both Order Management's and Inventory's Interfaces.
   Each copy describes a different boundary, so the repetition is honest,
   but a change to one shape touches several places. A Component-level
   set of named shapes would remove it, at the cost of another concept.
@@ -1447,13 +1638,29 @@ the evidence in [`contour-experiments.md`](contour-experiments.md)
   publishes them (transport, envelope) has no structured home yet, and
   a Component that publishes the same Event to two audiences (an
   internal bus and partner webhooks, say) can't say so.
-- **Soft consistency between the two views is unenforced.** Nothing in
-  the model requires a Context-view `depends-on` edge to actually be
-  explainable by a `uses` chain in the Functionality view, or vice
-  versa — the two can drift apart silently unless a modeler or tooling
-  checks them against each other. Whether that check should become
-  mandatory is worth revisiting now that a serialization exists to
-  enforce it (Experiments §1).
+- **Soft consistency between the two views is now largely enforced
+  within one model, but not between models.** The checker closes what
+  used to drift silently inside a model: allocation, exposes against
+  performs, `uses` steps against Interfaces, Actor `uses` against
+  exposes. What nothing yet checks is the seam *between* models: a
+  `Neighbour` block is a hand-written copy of what the neighbour's own
+  model declares, and the two can disagree — Order Management's
+  half-open Inventory against Inventory's real model, or
+  `billing.yaml`'s view of Order gRPC against
+  `order-management.yaml`'s. A cross-model check is mechanical to add
+  and is the natural next step.
+- **`uses` and `exposes` state the same set twice.** An Actor's `uses`
+  and its Interfaces' `exposes` must agree, and that redundancy is
+  deliberate — it is where the two directions meet and check each
+  other (Section 3.7) — but a complete model does carry the same list
+  in two places, and a reader may ask why. The alternative, deriving
+  one side from the other, would remove the check along with the
+  redundancy.
+- **Channel Requirements are a convention.** Top-down, an Interface's
+  binding is chosen by the Actor's channel Requirement (*Works In A
+  Browser*, *Service To Service*), but nothing structural connects a
+  Requirement's text to a binding's `style`, so nothing checks that
+  the chosen binding actually satisfies it.
 - **Requirement and Guardrail compliance grading is only partly tested.**
   Section 3.6 prescribes checking both, but *how* — a hard test
   assertion versus an LLM grading the resulting code against a
@@ -1528,7 +1735,13 @@ build from without reading the source directly, and in one case it
 summarized that behavior wrongly. v0.4 responds by giving every
 Function's endings, and what a failed call to another Component means,
 a structured place in the record; whether that carries real branching
-behavior precisely enough is the next thing to test. The other open
+behavior precisely enough is the next thing to test. v0.5 reframes
+the whole as one model completed from either direction — top-down
+from Actors and the Functions they use, bottom-up from code — with a
+checker that keeps what is wrong distinct from what is not yet filled
+in, which is the shape both primary claims need: building from a
+specification is the first direction run to completion, and legacy
+extraction is the second. The other open
 decisions — compatibility with consumers that already exist, and whether
 a record describes the current or the target system — look closable
 with conventions.
@@ -1553,7 +1766,7 @@ either:
 | Zoom levels | Layers (business/application/technology) | Separate diagram types (Context, Container, Component, Code, Dynamic) | Two views of one model (Context, Functionality) — Section 3.2 |
 | Relationships | 10+ formal types with precise semantics | Informal, unlabeled by convention | 9 relationship types, one vocabulary partitioned across both views |
 | Service concept | A dedicated element (Business/Application Service, separate from Process/Function) | Not modeled explicitly | No separate type — a Function that an Interface exposes |
-| Interface concept | A dedicated element (Application Interface) | Implicit in relationship labels ("JSON/HTTPS") | An element on the Component's boundary that serves one caller, exposes Functions, and carries all technical detail in its `binding` |
+| Interface concept | A dedicated element (Application Interface) | Implicit in relationship labels ("JSON/HTTPS") | A System-level element that serves one caller, exposes Functions, carries all technical detail in its `binding`, and sits on the Component that performs what it exposes |
 | Sequence/ordering | Not a core concern | Dynamic diagram (separate, numbered arrows) | `steps`, `result` and `alternatives` on a Function's record, and a generated trace view (Sections 3.2, 3.3) |
 | Tooling | Formal metamodel, exchange format, certified tools | Informal; Structurizr DSL as one implementation | Tool-agnostic (plain diagrams or simple YAML) |
 
@@ -1620,6 +1833,43 @@ it, never the other way round (Section 3.3).
 
 ## Changelog
 
+- **v0.5** — One model, two directions (new principle 9 and Section
+  3.7): a model has no layers, only a place where the filling-in
+  starts — top-down from business needs or bottom-up from source
+  code — and both directions arrive at the same complete model. An
+  Actor's record now names the Functions it **`uses`**; an Interface
+  serving an Actor must expose exactly that list. The `serves`
+  keyword for internal callers is now **`System`**, meaning this
+  System's own Components only; a System calling in from outside is
+  always an Actor, by name — `serves: Components` ("this or another
+  System") is gone. Interfaces moved to System level and declare no
+  owner: an Interface sits on whichever Component performs the
+  Functions it exposes, so the allocation is written once, in
+  `performs`; exposing Functions of two Components is a
+  contradiction. Components became optional — a model with none says
+  what the System does, not how it is split — and Components and
+  Interfaces carry a **`rationale`** naming why they exist. `calls`
+  stays within a Component: an allocation that splits one is a
+  contradiction resolved by redesign (one Component, or an Interface
+  serving `System` and a `uses` step with `Unreachable` decided),
+  never a silent rewrite. A **`Neighbour`** block holds the half-open
+  record view of another System — its touched Events, Functions and
+  Interfaces, the Interface serving this System as its Actor — so a
+  step never names what doesn't exist. Checks split into
+  **contradictions** (wrong however the model was started) and
+  **gaps** (not filled in yet, each with a top-down and a bottom-up
+  next step), with `contour-check.py` as reference implementation;
+  the Section 3.3 list grew the no-split-`calls` and
+  single-allocation rules. Section 5 rewritten around the Order
+  Management *System* (`order-management.yaml`): Billing as a
+  System-as-Actor, Inventory as a half-open neighbour, the Billing
+  mirror (`billing.yaml`), and the checker's findings on a top-down
+  and a bottom-up start of the same model. Limitations: the soft-
+  consistency bullet replaced (enforced within a model, open between
+  models), plus the `uses`/`exposes` redundancy and
+  channel-Requirement convention. Property table: Actor `uses`;
+  Component `performs`, `owns`, `produces`, `rationale`; Interface
+  `rationale`.
 - **v0.4** — Reframed the System as what serves its Actors and the
   Component as how it is implemented: Components group a System's
   Functions and Data Objects by lifecycle, maintainability and
