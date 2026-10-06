@@ -54,14 +54,14 @@ needs, then the code).
 
 `contour-engine.yaml` on this branch is the v0.5 model:
 
-- **System** Contour: 29 Functions (15 core, 14 Console), 5 Data Objects,
+- **System** Contour: 31 Functions (16 core, 15 Console), 5 Data Objects,
   6 Events.
-- **Actors:** Modeler (uses the 14 Console Functions; *Works In A Browser*)
-  and AI Agent (uses 14 core Functions; *Reaches The System As Tools*).
+- **Actors:** Modeler (uses the 15 Console Functions; *Works In A Browser*)
+  and AI Agent (uses 15 core Functions, Check Model among them; *Reaches The System As Tools*).
 - **Components:**
   - **contour-engine** performs every Function and owns all data —
     rationale: *One Core For Every Actor*, principle 4.
-  - **contour-engine-ui** performs the 14 Console Functions (View Element,
+  - **contour-engine-ui** performs the 15 Console Functions (View Element, Review Model,
     Find Specifications, Edit Element, Remove Element, …), owns no data, and
     hosts the Console — rationale: *Console Released Independently*,
     *Works In A Browser*.
@@ -70,7 +70,7 @@ needs, then the code).
     Functions, so it sits on contour-engine-ui.
   - **Contour MCP Server** serves the AI Agent (MCP) and exposes core
     Functions, so it sits on contour-engine.
-  - **Contour REST API** serves System (OpenAPI) and exposes exactly the 14
+  - **Contour REST API** serves System (OpenAPI) and exposes exactly the 15
     core Functions the Console Functions `use`, so it sits on contour-engine
     — rationale: *Console Released Independently*.
 
@@ -81,7 +81,7 @@ graph LR
     subgraph Contour [System: Contour]
         subgraph UI [Component: contour-engine-ui]
             Console(("Contour Console"))
-            UIFns["14 Console Functions<br/>View Element, Edit Element, …"]
+            UIFns["15 Console Functions<br/>View Element, Edit Element, …"]
         end
         subgraph Engine [Component: contour-engine]
             REST(("Contour REST API"))
@@ -110,6 +110,16 @@ Function names are unique within a System, so four Console Functions that
 had the same names as core Functions were renamed for what the person does:
 *Find Specifications*, *Remove Element*, *Remove Requirement*,
 *Remove Guardrail*.
+
+**The engine implements v0.5.** `Validate Element` rejects a write only for
+a contradiction decidable at element scope — never for a gap, under the
+Guardrail *Gaps Never Block A Write*, so a model can be built one element at
+a time from either end. `Check Model` is the model-scope counterpart of
+`contour-check.py`: contradictions and gaps in two lists, every gap with its
+top-down and bottom-up next step. The AI Agent uses it directly through the
+MCP Server; the Modeler through the Console's `Review Model`. Elements no
+longer carry a `componentId`: allocation is the `performs`, `owns` and
+`produces` relationships, and an Interface's Component is derived.
 
 ## Completing a model in each direction
 
@@ -206,7 +216,7 @@ Results on contour-engine:
 |---|---|---|
 | Complete (`contour-engine.yaml`) | 0 | 0 |
 | Started top-down: no Components or Interfaces; Console Functions `call` core ones | 0 | 3 — A0, and N2 for each Actor |
-| Top-down, Components allocated, no Interfaces yet | 15 — A3, one per crossing `calls` (redesign due) | 2 — N2 for each Actor |
+| Top-down, Components allocated, no Interfaces yet | 16 — A3, one per crossing `calls` (redesign due) | 2 — N2 for each Actor |
 | Started bottom-up: no `uses`, no rationale yet | 0 | 7 — N1 for each Actor, W1 for each Component and Interface |
 | A Data Object given a second owner | 8 | 0 |
 | The Console exposes a core Function (Retrieve Element) | 1 — A5 | 1 — N4 |
