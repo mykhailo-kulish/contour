@@ -70,14 +70,12 @@ System:
     performs: [Create Invoice, Fetch Invoice, Void Invoice]
     owns: [Invoice]
     produces: [Invoice Issued, Invoice Failed, Invoice Voided]
-    implements: [Billing API]
     rationale: [Finance Staff needs, "principle 4: data has a home"]
   interfaces:
   - name: Billing API
     description: Finance staff looking invoices up and voiding them.
     serves: Finance Staff
     binding: {style: OpenAPI, base: /billing/v1/invoices, auth: staff SSO, errors: RFC 7807}
-    implementedBy: billing-service
     rationale: [Finance Staff needs, Staff Sign-On]
     exposes:
       Fetch Invoice:

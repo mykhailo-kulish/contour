@@ -89,14 +89,12 @@ System:
     performs: [Place Order, Validate Order, Calculate Total, Fetch Order, Cancel Own Order, Cancel Order for Customer]
     owns: [Order]
     produces: [Order Placed, Order Cancelled]
-    implements: [Customer API, Operations API, Order gRPC]
     rationale: [All Or Nothing, "principle 4: data has a home"]
   interfaces:
   - name: Customer API
     description: Customers placing, tracking and cancelling their own orders via web and mobile.
     serves: Customer
     binding: {style: OpenAPI, base: /v1/orders, auth: customer token, errors: RFC 7807}
-    implementedBy: order-service
     rationale: [Customer needs, Web And Mobile]
     exposes:
       Place Order:
@@ -126,7 +124,6 @@ System:
     description: Staff viewing and cancelling orders on a customer's behalf.
     serves: Support Staff
     binding: {style: OpenAPI, base: /ops/v1/orders, auth: staff SSO, errors: RFC 7807}
-    implementedBy: order-service
     rationale: [Support Staff needs, Staff Sign-On]
     exposes:
       Fetch Order:
@@ -146,7 +143,6 @@ System:
     description: Billing reading orders.
     serves: Billing
     binding: {style: gRPC, service: orders.v1.OrderService, auth: mTLS service identity}
-    implementedBy: order-service
     rationale: [Billing needs, Service To Service]
     exposes:
       Fetch Order:

@@ -119,17 +119,12 @@ def check(model):
                 bad("R3", f"Interface {i['name']} exposes Event-triggered Function {n}")
             elif isinstance(ex, dict) and set(ex[n].get("responses", {})) != outcomes(funcs[n]):
                 bad("R3", f"{i['name']} / {n}: responses don't cover exactly its outcomes")
-        if i.get("implementedBy") and i["implementedBy"] not in comps:
-            bad("R3", f"Interface {i['name']} implemented by unknown Component {i['implementedBy']}")
     for c in comps.values():
         for field, pool, kind in (("performs", funcs, "Function"), ("owns", data, "Data Object"),
-                                  ("produces", events, "Event"), ("implements", ifaces, "Interface")):
+                                  ("produces", events, "Event")):
             for n in c.get(field) or []:
                 if n not in pool:
                     bad("R4", f"{c['name']} {field} unknown {kind} {n}")
-        for n in c.get("implements") or []:
-            if n in ifaces and ifaces[n].get("implementedBy") not in (None, c["name"]):
-                bad("R4", f"{c['name']} implements {n}, which names {ifaces[n]['implementedBy']} as implementer")
     holders = ([S] + list(funcs.values()) + list(actors.values()) + S.get("dataObjects", [])
                + list(comps.values()) + list(ifaces.values()))
     for h in holders:
@@ -174,22 +169,25 @@ def check(model):
                     bad("A3", f"{f['name']} on {pc} calls {st['calls']} on {performer[st['calls']]}: `calls` stays "
                               f"within a Component; redesign — allocate both to one Component, or expose "
                               f"{st['calls']} on an Interface serving System and make the step `uses`")
+        # An Interface belongs to the Component that performs the Functions it exposes.
+        host = {}
         for i in ifaces.values():
-            if not i.get("implementedBy"):
-                gap("A4", f"Interface {i['name']} isn't allocated to a Component",
-                    "decide which Component implements it", "find the deployable that serves it")
-                continue
-            here = i["implementedBy"]
-            for n in sorted(exposed(i)):
-                if performer.get(n) not in (None, here):
-                    bad("A5", f"Interface {i['name']} on {here} exposes {n}, performed by {performer[n]}: "
-                              f"an Interface exposes only Functions its Component performs")
+            hosts = {performer[n] for n in exposed(i) if n in performer}
+            if len(hosts) > 1:
+                bad("A5", f"Interface {i['name']} exposes Functions of more than one Component "
+                          f"({', '.join(sorted(hosts))}): an Interface exposes only Functions one Component performs")
+            elif hosts:
+                host[i["name"]] = hosts.pop()
+            else:
+                gap("A4", f"Interface {i['name']} has no Component yet: none of the Functions it exposes is performed",
+                    "allocate the Functions it exposes to a Component",
+                    "find the deployable that serves it and record its Functions in `performs`")
         for f in funcs.values():
             pc = performer.get(f["name"])
             for st in f.get("steps") or []:
                 iname = st.get("uses", "").partition(" / ")[0]
                 i = ifaces.get(iname)
-                if not (i and pc and i.get("implementedBy")) or i["implementedBy"] == pc:
+                if not (i and pc and iname in host) or host[iname] == pc:
                     continue
                 if i.get("serves") != "System":
                     bad("A6", f"{f['name']} on {pc} uses {iname}, which serves {i.get('serves')}, not System")

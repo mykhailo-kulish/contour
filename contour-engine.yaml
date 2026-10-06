@@ -496,7 +496,6 @@ System:
     - Requirement Deleted
     - Guardrail Stored
     - Guardrail Deleted
-    implements: [Contour MCP Server, Contour REST API]
     requirements: [Local start composition]
   - name: contour-engine-ui
     description: >-
@@ -519,7 +518,6 @@ System:
     - Edit Guardrail
     - Remove Requirement
     - Remove Guardrail
-    implements: [Contour Console]
     requirements: [Local start composition]
   interfaces:
   - name: Contour Console
@@ -528,7 +526,6 @@ System:
       create, edit and remove.
     rationale: [Modeler needs, Works In A Browser]
     serves: Modeler
-    implementedBy: contour-engine-ui
     binding: {style: Web UI}
     exposes:
     - List Components
@@ -550,7 +547,6 @@ System:
       Model Context Protocol access for AI Agents, reading and storing Contour specifications as tools.
     rationale: [AI Agent needs, Reaches The System As Tools]
     serves: AI Agent
-    implementedBy: contour-engine
     binding: {style: MCP, transport: streamable HTTP, auth: agent token}
     exposes:
       Store Element:
@@ -656,7 +652,6 @@ System:
       and use the engine's Functions from there.
     rationale: [Console Released Independently]
     serves: System
-    implementedBy: contour-engine
     binding: {style: OpenAPI, base: /api/v1, auth: service token, errors: RFC 7807}
     requirements: [Generate OpenAPI From The Interface]
     exposes:

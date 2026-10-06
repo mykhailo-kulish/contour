@@ -36,11 +36,10 @@ needs, then the code).
     uses: [Find Specifications, View Element, Edit Element, …]
     requirements: [Works In A Browser, Listings Are Paginated]
   ```
-- **Interfaces belong to the System and are allocated to a Component**, not
-  owned by one by definition: an Interface names the Component that
-  `implementedBy`, and the Component lists it in `implements`. As in v0.4,
-  **an Interface exposes only Functions its implementing Component
-  performs.** A Component that needs another Component's Function performs
+- **Interfaces belong to the System, not to a Component.** An Interface names
+  no Component: its Component is derived — the one that performs the
+  Functions it exposes, so the allocation is written once, in `performs`. As
+  in v0.4, **an Interface exposes only Functions one Component performs.** A Component that needs another Component's Function performs
   its own Function, which `uses` the other's Interface — the crossing is a
   visible step with `Unreachable` mapped, never hidden in an Interface.
 - **Components and Interfaces carry a `rationale`**: the Actor needs,
@@ -64,16 +63,16 @@ needs, then the code).
     rationale: *One Core For Every Actor*, principle 4.
   - **contour-engine-ui** performs the 14 Console Functions (View Element,
     Find Specifications, Edit Element, Remove Element, …), owns no data, and
-    implements the Console — rationale: *Console Released Independently*,
+    hosts the Console — rationale: *Console Released Independently*,
     *Works In A Browser*.
 - **Interfaces:**
-  - **Contour Console** serves the Modeler (Web UI), implemented by
-    contour-engine-ui; exposes the Console Functions.
-  - **Contour MCP Server** serves the AI Agent (MCP), implemented by
-    contour-engine.
-  - **Contour REST API** serves System (OpenAPI), implemented by
-    contour-engine; exposes exactly the 14 core Functions the Console
-    Functions `use` — rationale: *Console Released Independently*.
+  - **Contour Console** serves the Modeler (Web UI) and exposes the Console
+    Functions, so it sits on contour-engine-ui.
+  - **Contour MCP Server** serves the AI Agent (MCP) and exposes core
+    Functions, so it sits on contour-engine.
+  - **Contour REST API** serves System (OpenAPI) and exposes exactly the 14
+    core Functions the Console Functions `use`, so it sits on contour-engine
+    — rationale: *Console Released Independently*.
 
 ```mermaid
 graph LR
@@ -175,8 +174,7 @@ The checker reads one model and reports two kinds of finding.
   alternatives
 - **A3** `reads`/`modifies` stay with the owner (principle 4); an Event is
   produced where its Function runs; `calls` stays within a Component
-- **A5** an Interface exposes only Functions its implementing Component
-  performs
+- **A5** an Interface exposes only Functions one Component performs
 - **A6** a Function using another Component's Interface uses one that serves
   `System`
 
@@ -185,7 +183,7 @@ step:
 
 - **A0** no Components at all
 - **A2** a Function, Data Object or Event not yet allocated
-- **A4** an Interface not yet allocated to a Component
+- **A4** an Interface none of whose exposed Functions is performed yet
 - **N1** an Actor with Interfaces but no `uses`
 - **N2** an Actor with `uses` but no Interface
 - **N3** a Function the Actor uses that no Interface serving it exposes
@@ -220,7 +218,7 @@ Results on contour-engine:
 
 An Interface is a channel: it declares how one caller reaches Functions the
 System offers and a Component performs. It carries `serves`, `exposes`
-(operation, request, responses), `binding` and `implementedBy`; every
+(operation, request, responses), and `binding`; every
 technical word lives there and none in a Function.
 
 - `serves: <Actor>` — a person, an organization, or **another System**, seen
@@ -273,7 +271,7 @@ neighbours.
    How the v0.4 one-page diagram, the half-open neighbours and the
    drill-downs carry over is still to be decided.
 4. **Schema.** `contour.schema.json` on this branch is still v0.4; it needs
-   System-level Interfaces, `implements`, `rationale` and Actor `uses`.
+   System-level Interfaces, `rationale` and Actor `uses`.
 
 ## Next steps
 
