@@ -93,7 +93,9 @@ change into code correctly.
 9. [Changelog](#changelog)
 
 Experiment results and the roadmap live in the companion document
-[`contour-experiments.md`](contour-experiments.md).
+[`contour-experiments.md`](contour-experiments.md); the worked examples,
+their model files and the checker's output on them, in
+[`contour-example.md`](contour-example.md).
 
 ---
 
@@ -1047,6 +1049,22 @@ Actor — the mirror of the rule that another System calling in is an
 Actor here. Nothing else about the neighbour is restated; its own
 model holds the rest, and the two models meet at the Interface.
 
+```yaml
+Neighbour: Inventory                       # in Order Management's model
+  functions:
+    - name: Check Stock
+      result: Available
+      alternatives: { Short: Some items have less stock than requested. }
+  interfaces:
+    - name: Inventory gRPC
+      serves: Order Management
+      exposes: [Check Stock]
+```
+
+This is what lets `Validate Order`'s `uses: Inventory gRPC / Check
+Stock` resolve, and what lets a checker verify its `becomes` mapping
+against `Check Stock`'s real outcomes.
+
 **Completing a model, from either side.** Top-down, from needs to
 structure: one Interface per Actor and channel, the binding chosen by
 the Actor's channel Requirement, exposing exactly what the Actor
@@ -1151,9 +1169,11 @@ double as a notation reference.
 
 The **Order Management** System in an e-commerce context, drawn as the
 default one-page diagram of Section 3.2 — the System opened, its
-neighbour half-open. The same model, as data, is
-[`order-management.yaml`](order-management.yaml) in this repository,
-and every finding quoted below is the checker's output on it.
+neighbour half-open. The complete model is
+[`order-management.yaml`](order-management.yaml); its records, the
+Billing System on the other side of `Order gRPC`, and a larger System
+split into two Components are walked through in the companion
+[`contour-example.md`](contour-example.md).
 
 ```mermaid
 graph LR
@@ -1193,178 +1213,25 @@ graph LR
     classDef ext stroke-width:3px
 ```
 
-Order Management serves three Actors, each through one Interface: the
-**Customer** (a person) through the **Customer API**, **Support
-Staff** (a role) through the **Operations API**, and **Billing** —
-which is not a person but another System, and an Actor all the same —
-through **Order gRPC**. Each Actor's record lists the Functions it
-`uses`, and each Interface exposes exactly that list. `Validate Order`
-and `Calculate Total` are exposed by no Interface and used by no
-Actor, so they stay private — `Place Order` reaches them with
-`calls`, inside the Component.
+Order Management serves three Actors, each through one Interface
+exposing exactly what that Actor `uses`: the **Customer** through the
+**Customer API**, **Support Staff** through the **Operations API**,
+and **Billing** — another System, and an Actor all the same — through
+**Order gRPC**. All three Interfaces sit on `order-service` because it
+performs everything they expose; none of them says so. `Validate
+Order` and `Calculate Total` are exposed by none and stay private.
+`Fetch Order` follows the same rules for every caller, so all three
+Interfaces expose it; cancellation follows different rules per caller,
+so it is two Functions named for whose action they are (Section 3.5).
+The dependency on **Inventory** runs the other way: Inventory is not an
+Actor here — `Validate Order` uses its Interface, and in Inventory's
+model Order Management is the Actor. Deployment nodes, infrastructure,
+and organizational elements are absent by design (principle 5).
 
-`Fetch Order` behaves the same for every caller, so all three
-Interfaces expose it; what each caller sees differs only in the
-Interface — the Customer gets four fields of an Order, Staff and
-Billing the whole record. Cancellation is split, because the rules
-differ: a customer may cancel only before shipment, support staff at
-any stage but with a reason. The two Functions are named for whose
-action they are (Section 3.5).
-
-The neighbour runs in the other direction: Order Management *depends
-on* **Inventory**, so Inventory is not an Actor here — instead,
-`Validate Order` uses Inventory's Interface, in whose model Order
-Management is the Actor. Inventory appears in this model only
-half-open, as its `Neighbour` block. Billing also consumes
-`Order Placed`; an Event creates no `depends-on` and no Actor
-relation, because the Event is the coupling.
-
-Deployment nodes, infrastructure, and organizational elements are
-absent by design (principle 5).
-
-**The records behind the diagram.** The complete model — every
-Actor, Requirement, Guardrail, Data Object, Event, Interface and
-Function above — is [`order-management.yaml`](order-management.yaml);
-the paper keeps only the snippets that make a point. `Place Order`,
-`Validate Order` and `Calculate Total` are the records of Section 3.3,
-and the `Order gRPC` Interface serving Billing is in Section 3.3 too.
-The keys after `style` in each `binding`, and the form of each
-`operation` and code, are illustrative — what an OpenAPI or gRPC
-binding might define (Section 3.3).
-
-*An Actor and the Interface designed for it.* The Customer's `uses`
-is the business statement; the Customer API exposes exactly that list,
-and says nothing about which Component it sits on:
-
-```yaml
-Actor: Customer
-  description: A person buying from the shop.
-  uses: [Place Order, Fetch Order, Cancel Own Order]
-  requirements: [Web And Mobile]
-  guardrails: [Own Orders Only]
-
-Interface: Customer API
-  description: Customers placing, tracking and cancelling their own orders via web and mobile.
-  serves: Customer
-  binding: { style: OpenAPI, base: /v1/orders, auth: customer token, errors: RFC 7807 }
-  rationale: [Customer needs, Web And Mobile]
-  exposes:
-    Place Order:
-      operation: POST /
-      request:
-        items: "Order.Line Item { productId, quantity }[1..]"
-      responses:
-        Placed:            { code: 201, body: "Order { id, items, total, status }" }
-        Out Of Stock:      { code: 409, body: { shortItems: "{ productId: string, missing: integer }[1..]" } }
-        Below Minimum:     422
-        Stock Unavailable: 503
-    Cancel Own Order:
-      operation: POST /{id}/cancel
-      request: { id: uuid }
-      responses:
-        Cancelled:         { code: 200, body: "Order { id, status }" }
-        Already Shipped:   409
-        Already Cancelled: 409
-        Not Found:         404
-    # Fetch Order: as in Section 3.3
-```
-
-`Place Order` never mentions a customer id: it works with the caller's
-identity, which the Customer API's `auth` establishes (Section 3.3).
-`Own Orders Only` sits on the Customer — the Actor — so it governs
-everything that Actor reaches, whichever Interface carries it. The
-Operations API exposes `Cancel Order for Customer` as
-`POST /{id}/cancel` too, without colliding, because the two Interfaces
-have different bases.
-
-*The allocation, written once.* The Component is where the System's
-work and data are placed; every Interface above sits on `order-service`
-because that is who performs everything it exposes:
-
-```yaml
-Component: order-service
-  description: Owns the order lifecycle from placement to cancellation.
-  performs: [Place Order, Validate Order, Calculate Total, Fetch Order,
-             Cancel Own Order, Cancel Order for Customer]
-  owns: [Order]
-  produces: [Order Placed, Order Cancelled]
-  rationale: [All Or Nothing, "principle 4: data has a home"]
-```
-
-The Functions carry no paths, codes or payloads; the Interfaces carry
-no business rules. `All Or Nothing` sits on the System, so every
-alternative of every Function leaves the order untouched unless it
-says otherwise.
-
-**The neighbour, half-open.** Inventory appears exactly as far as
-this model touches it — the `Neighbour` block of Section 3.7:
-
-```yaml
-Neighbour: Inventory
-  functions:
-    - name: Check Stock
-      result: Available
-      alternatives: { Short: Some items have less stock than requested. }
-  interfaces:
-    - name: Inventory gRPC
-      serves: Order Management
-      exposes: [Check Stock]
-```
-
-`Inventory gRPC` serves *Order Management*: in Inventory's own model,
-this System is the Actor. The block is what lets `Validate Order`'s
-`uses` step resolve — a step never names a System, Function or
-Interface that doesn't exist — and what lets the checker verify the
-`becomes` mapping against `Check Stock`'s real outcomes.
-
-**The other side of the mirror.** Billing is one line in this model —
-an Actor using `Fetch Order`. Billing's own model
-([`billing.yaml`](billing.yaml) in this repository) carries its side
-of the same dependency, with Order Management as *its* half-open
-neighbour:
-
-```yaml
-Function: Create Invoice                   # Billing's model
-  description: Issues an invoice for a newly placed order.
-  steps:
-    - consumes: Order Placed
-    - uses: Order gRPC / Fetch Order
-      becomes: { Not Found: Order Missing, Unreachable: Deferred }
-    - modifies: Invoice
-    - produces: Invoice Issued
-  result: Invoiced
-  alternatives:
-    Order Missing:
-      when: The order no longer exists.
-      effects:
-        - produces: Invoice Failed
-    Deferred: Order Management couldn't be reached; the Event is processed again later.
-```
-
-The two models agree at the boundary: Order Management's `Order gRPC`
-serves Billing and exposes `Fetch Order`; Billing's step uses exactly
-that. `Create Invoice` also shows the other side of `Unreachable`:
-when Order Management can't be reached, the business answer is to try
-again later, not to fail the invoice. And it is how Billing obtains
-Order data without reading it — principle 4, across Systems: the only
-route to another System's data is an external Function or an Event.
-
-**Drilling into the dependency on Inventory.** The one-page diagram's
-`uses · Inventory gRPC` edge, drawn in full:
-
-```mermaid
-graph LR
-    subgraph OM [System: Order Management]
-        ValidateOrder[Function: Validate Order]
-    end
-    subgraph Inventory [System: Inventory]
-        InvGrpc(("Inventory gRPC"))
-        CheckStock[Function: Check Stock]:::ext
-    end
-    ValidateOrder -->|uses| InvGrpc
-    InvGrpc -->|exposes| CheckStock
-    classDef ext stroke-width:3px
-```
+The records behind the diagram are the ones already shown: `Place
+Order`, `Validate Order`, `Calculate Total`, `Order`, and the
+Customer API and Order gRPC Interfaces in Section 3.3; the Inventory
+`Neighbour` block in Section 3.7; `All Or Nothing` in Section 3.6.
 
 **Tracing Place Order.** The trace view of Section 3.2, generated from
 these records for the Customer API:
@@ -1386,30 +1253,22 @@ which becomes `Place Order`'s *Out Of Stock* and a 409. `Place Order`'s
 own alternative, `Below Minimum`, is drawn as an exit from the Function
 as a whole, its position governed by the guardrail.
 
-**Drilling into the event:** at Context level, Order Management
-`produces` `Order Placed`, and Billing and Inventory consume it. The
-Functionality-view chain underneath lives in each consumer's own
-model: on Billing's side it is `Create Invoice` above; on Inventory's,
-the `Reserve Stock` chain Section 3.4 showed, with `Stock Reserved` a
-second Event this page never had to draw.
+**The same model, started from either end.** The checker's findings on
+three states of `order-management.yaml` (Section 3.7; full output in
+the companion):
 
-**The same model, started from either end.** Running the checker
-against three states of this model shows the two directions meeting
-(Section 3.7). Complete, it reports nothing. Stripped back to a
-top-down start — no Components, no Interfaces, the private calls still
-plain `calls` — it reports no contradictions and four gaps: no
-Components yet, and one per Actor with `uses` but no Interface, each
-gap naming the next step from each direction. Stripped the other way,
-to a bottom-up start — structure present, but no Actor `uses` and no
-`rationale` — it reports no contradictions and seven gaps: one per
-Actor whose Interfaces expose Functions it hasn't claimed, and one per
-Component and Interface that cannot yet say why it exists. Planted
-mistakes, by contrast, come back as contradictions wherever the model
-stands: a second owner for `Order`, a response map missing an outcome,
-an Interface exposing a Function performed elsewhere.
+| State of the model | Contradictions | Gaps |
+|---|---|---|
+| Complete | 0 | 0 |
+| Top-down start — Actors, `uses`, Functions, data; no Components or Interfaces | 0 | 4 — no Components yet; one per Actor with no Interface |
+| Bottom-up start — Components and Interfaces; no Actor `uses`, no `rationale` | 0 | 7 — one per Actor with unclaimed Interfaces; one per Component or Interface without a reason |
+| A planted mistake — `Order` given a second owner | 7 | 0 |
+
+Neither start is wrong, only unfinished, and every gap names its next
+step from both directions; a mistake is a contradiction wherever the
+model stands.
 
 ---
-
 
 ## 6. Limitations and Open Questions
 
@@ -1714,9 +1573,12 @@ it, never the other way round (Section 3.3).
   next step), with `contour-check.py` as reference implementation;
   the Section 3.3 list grew the no-split-`calls` and
   single-allocation rules. The full worked model lives in
-  `order-management.yaml`; Section 5 keeps only the snippets that make
-  a point, and every snippet in the paper matches that file field for
-  field. Section 5 rewritten around the Order
+  `order-management.yaml`, and Section 5 is compacted to the diagram,
+  the trace and the two-direction results; the records, the Billing
+  mirror, the drill-downs, the `contour-engine` example and the
+  checker's full output moved to the new companion
+  `contour-example.md`, and the Neighbour snippet to Section 3.7. Every
+  snippet in the paper matches its model file field for field. Section 5 rewritten around the Order
   Management *System* (`order-management.yaml`): Billing as a
   System-as-Actor, Inventory as a half-open neighbour, the Billing
   mirror (`billing.yaml`), and the checker's findings on a top-down

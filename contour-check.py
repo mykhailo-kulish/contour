@@ -204,9 +204,9 @@ def check(model):
         if not need and got:
             gap("N1", f"Actor {a['name']} has Interfaces but no `uses`",
                 "state the Functions this Actor uses",
-                f"take them from what its Interfaces expose: {sorted(got)[:3]}…")
+                "take them from what its Interfaces expose: " + ", ".join(sorted(got)[:3]) + ("…" if len(got) > 3 else ""))
         if not serving and need:
-            gap("N2", f"Actor {a['name']} uses {len(need)} Functions but no Interface serves it",
+            gap("N2", f"Actor {a['name']} uses {len(need)} Function{'s' if len(need) != 1 else ''} but no Interface serves it",
                 "add an Interface for this Actor, its binding chosen by the Actor's channel Requirement",
                 "find the entry point this Actor uses in the code")
         for n in sorted(need - got) if serving else []:
