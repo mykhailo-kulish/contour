@@ -466,7 +466,7 @@ Function: Place Order
   requirements: [Minimum Order Value]
 
 Function: Validate Order
-  description: Checks every item of the new order against stock.
+  description: Checks every item of the new order against stock, and reports which are short.
   steps:
     - uses: Inventory gRPC / Check Stock
       becomes: { Short: Short, Unreachable: Stock Unknown }
@@ -628,7 +628,7 @@ element can; they apply to every Function reached through it.
 
 ```yaml
 Interface: Customer API
-  description: Customers placing, tracking and cancelling their own orders.
+  description: Customers placing, tracking and cancelling their own orders via web and mobile.
   serves: Customer
   binding: { style: OpenAPI, base: /v1/orders, auth: customer token, errors: RFC 7807 }
   rationale: [Customer needs, Web And Mobile]
@@ -958,9 +958,9 @@ Guardrail: Payment Logic Stays in Billing
     result as opaque.
 
 Function: Place Order
-  description: Accepts a new order request, validates it, and creates it.
+  description: Accepts a new order, checks it, and creates it.
   requirements: [Minimum Order Value]
-  guardrails: [Payment Logic Stays in Billing]
+  guardrails: [Payment Logic Stays in Billing]   # illustration; not in order-management.yaml
 ```
 
 `Place Order`, not `Calculate Total`, is where the Minimum Order Value
@@ -1222,84 +1222,26 @@ relation, because the Event is the coupling.
 Deployment nodes, infrastructure, and organizational elements are
 absent by design (principle 5).
 
-**The records behind the diagram.** The keys after `style` in each
-`binding`, and the form of each `operation` and code, are
-illustrative — what an OpenAPI or gRPC binding might define (Section
-3.3):
+**The records behind the diagram.** The complete model — every
+Actor, Requirement, Guardrail, Data Object, Event, Interface and
+Function above — is [`order-management.yaml`](order-management.yaml);
+the paper keeps only the snippets that make a point. `Place Order`,
+`Validate Order` and `Calculate Total` are the records of Section 3.3,
+and the `Order gRPC` Interface serving Billing is in Section 3.3 too.
+The keys after `style` in each `binding`, and the form of each
+`operation` and code, are illustrative — what an OpenAPI or gRPC
+binding might define (Section 3.3).
+
+*An Actor and the Interface designed for it.* The Customer's `uses`
+is the business statement; the Customer API exposes exactly that list,
+and says nothing about which Component it sits on:
 
 ```yaml
-System: Order Management
-  description: Takes customers' orders and carries them from placement to cancellation.
-  guardrails: [All Or Nothing]
-
 Actor: Customer
   description: A person buying from the shop.
   uses: [Place Order, Fetch Order, Cancel Own Order]
   requirements: [Web And Mobile]
   guardrails: [Own Orders Only]
-
-Actor: Support Staff
-  description: Customer-service and back-office staff handling order issues.
-  uses: [Fetch Order, Cancel Order for Customer]
-  requirements: [Staff Sign-On]
-
-Actor: Billing
-  description: The Billing System; invoices each order once it is placed.
-  uses: [Fetch Order]
-  requirements: [Service To Service]
-
-Requirement: Minimum Order Value
-  description: An order must total at least $1.00 before it can be placed.
-
-Requirement: Web And Mobile
-  description: Customers reach the shop from a browser and the mobile app.
-
-Requirement: Staff Sign-On
-  description: Staff work under their corporate identity.
-
-Requirement: Service To Service
-  description: Other Systems call with their own service identity.
-
-Guardrail: All Or Nothing
-  description: >
-    A change is persisted and announced only after every check has passed.
-    An alternative ending leaves no change and produces no Event, unless it
-    lists effects of its own.
-
-Guardrail: Own Orders Only
-  description: >
-    A customer can read or change only orders whose customerId matches
-    their own identity. Other orders end as Not Found, so their existence
-    isn't revealed.
-
-Component: order-service
-  description: Owns the order lifecycle from placement to cancellation.
-  performs: [Place Order, Validate Order, Calculate Total, Fetch Order,
-             Cancel Own Order, Cancel Order for Customer]
-  owns: [Order]
-  produces: [Order Placed, Order Cancelled]
-  rationale: [All Or Nothing, "principle 4: data has a home"]
-
-DataObject: Order
-  description: A customer's order, from placement through fulfillment.
-  schema:
-    id: uuid
-    customerId: string
-    items: Line Item[1..]
-    total: decimal
-    status: enum(pending, confirmed, shipped, cancelled)
-    cancellationReason: string?
-    Line Item: { productId: string, quantity: integer, unitPrice: decimal }
-
-Event: Order Placed
-  description: A customer's order was accepted and persisted.
-  schema: { orderId: uuid, customerId: string, total: decimal }
-
-Event: Order Cancelled
-  description: An order was cancelled, by its customer or by support staff.
-  schema:
-    orderId: uuid
-    reason: string?
 
 Interface: Customer API
   description: Customers placing, tracking and cancelling their own orders via web and mobile.
@@ -1316,12 +1258,6 @@ Interface: Customer API
         Out Of Stock:      { code: 409, body: { shortItems: "{ productId: string, missing: integer }[1..]" } }
         Below Minimum:     422
         Stock Unavailable: 503
-    Fetch Order:
-      operation: GET /{id}
-      request: { id: uuid }
-      responses:
-        Found:     { code: 200, body: "Order { id, items, total, status }" }
-        Not Found: 404
     Cancel Own Order:
       operation: POST /{id}/cancel
       request: { id: uuid }
@@ -1330,118 +1266,35 @@ Interface: Customer API
         Already Shipped:   409
         Already Cancelled: 409
         Not Found:         404
+    # Fetch Order: as in Section 3.3
+```
 
-Interface: Operations API
-  description: Staff viewing and cancelling orders on a customer's behalf.
-  serves: Support Staff
-  binding: { style: OpenAPI, base: /ops/v1/orders, auth: staff SSO, errors: RFC 7807 }
-  rationale: [Support Staff needs, Staff Sign-On]
-  exposes:
-    Fetch Order:
-      operation: GET /{id}
-      request: { id: uuid }
-      responses:
-        Found:     { code: 200, body: Order }
-        Not Found: 404
-    Cancel Order for Customer:
-      operation: POST /{id}/cancel
-      request:
-        id: uuid
-        reason: string
-      responses:
-        Cancelled:         { code: 200, body: Order }
-        Already Cancelled: 409
-        Not Found:         404
+`Place Order` never mentions a customer id: it works with the caller's
+identity, which the Customer API's `auth` establishes (Section 3.3).
+`Own Orders Only` sits on the Customer — the Actor — so it governs
+everything that Actor reaches, whichever Interface carries it. The
+Operations API exposes `Cancel Order for Customer` as
+`POST /{id}/cancel` too, without colliding, because the two Interfaces
+have different bases.
 
-Interface: Order gRPC
-  description: Billing reading orders.
-  serves: Billing
-  binding: { style: gRPC, service: orders.v1.OrderService, auth: mTLS service identity }
-  rationale: [Billing needs, Service To Service]
-  exposes:
-    Fetch Order:
-      operation: GetOrder
-      request: { id: uuid }
-      responses:
-        Found:     { code: OK, body: Order }
-        Not Found: NOT_FOUND
+*The allocation, written once.* The Component is where the System's
+work and data are placed; every Interface above sits on `order-service`
+because that is who performs everything it exposes:
 
-Function: Place Order
-  description: Accepts a new order, checks it, and creates it.
-  steps:
-    - calls: Validate Order
-      becomes: { Short: Out Of Stock, Stock Unknown: Stock Unavailable }
-    - calls: Calculate Total
-    - modifies: Order
-    - produces: Order Placed
-  result: Placed
-  alternatives:
-    Out Of Stock: Some items can't be supplied in the requested quantity.
-    Stock Unavailable: Stock couldn't be checked right now.
-    Below Minimum: The order total is under $1.00.
-  behavior: The order is persisted with status pending, for the customer who called.
-  requirements: [Minimum Order Value]
-
-Function: Validate Order
-  description: Checks every item of the new order against stock, and reports which are short.
-  steps:
-    - uses: Inventory gRPC / Check Stock
-      becomes: { Short: Short, Unreachable: Stock Unknown }
-  result: All Available
-  alternatives:
-    Short: Some items have less stock than ordered.
-    Stock Unknown: Inventory couldn't be reached.
-
-Function: Calculate Total
-  description: Computes the order total from its line items.
-  result: Calculated
-  behavior: Sum of quantity × unit price per line item; no discounts or tax.
-
-Function: Fetch Order
-  description: Returns a single order.
-  steps:
-    - reads: Order
-  result: Found
-  alternatives:
-    Not Found: No order has this id, or the caller may not see it.
-
-Function: Cancel Own Order
-  description: Lets a customer cancel an order that hasn't shipped.
-  steps:
-    - reads: Order
-    - modifies: Order
-    - produces: Order Cancelled
-  result: Cancelled
-  alternatives:
-    Not Found: No order with this id belongs to the customer.
-    Already Shipped: The order has already shipped.
-    Already Cancelled: The order was cancelled earlier.
-
-Function: Cancel Order for Customer
-  description: Lets support staff cancel any order, with a reason.
-  steps:
-    - reads: Order
-    - modifies: Order
-    - produces: Order Cancelled
-  result: Cancelled
-  alternatives:
-    Not Found: No order has this id.
-    Already Cancelled: The order was cancelled earlier.
-  behavior: The reason is stored on the Order.
+```yaml
+Component: order-service
+  description: Owns the order lifecycle from placement to cancellation.
+  performs: [Place Order, Validate Order, Calculate Total, Fetch Order,
+             Cancel Own Order, Cancel Order for Customer]
+  owns: [Order]
+  produces: [Order Placed, Order Cancelled]
+  rationale: [All Or Nothing, "principle 4: data has a home"]
 ```
 
 The Functions carry no paths, codes or payloads; the Interfaces carry
-no business rules. `Place Order` never mentions a customer id: it
-works with the caller's identity, which the Customer API's `auth`
-establishes (Section 3.3). The two cancel Functions share
-`POST /{id}/cancel` without colliding, because they sit on different
-Interfaces with different bases. `All Or Nothing` sits on the System,
-so every alternative of every Function leaves the order untouched
-unless it says otherwise. `Own Orders Only` sits on the Customer —
-the Actor — so it governs everything that Actor reaches, whichever
-Interface carries it. And no Interface declares a Component:
-each sits on `order-service` because that is who performs everything
-it exposes.
+no business rules. `All Or Nothing` sits on the System, so every
+alternative of every Function leaves the order untouched unless it
+says otherwise.
 
 **The neighbour, half-open.** Inventory appears exactly as far as
 this model touches it — the `Neighbour` block of Section 3.7:
@@ -1860,7 +1713,10 @@ it, never the other way round (Section 3.3).
   **gaps** (not filled in yet, each with a top-down and a bottom-up
   next step), with `contour-check.py` as reference implementation;
   the Section 3.3 list grew the no-split-`calls` and
-  single-allocation rules. Section 5 rewritten around the Order
+  single-allocation rules. The full worked model lives in
+  `order-management.yaml`; Section 5 keeps only the snippets that make
+  a point, and every snippet in the paper matches that file field for
+  field. Section 5 rewritten around the Order
   Management *System* (`order-management.yaml`): Billing as a
   System-as-Actor, Inventory as a half-open neighbour, the Billing
   mirror (`billing.yaml`), and the checker's findings on a top-down

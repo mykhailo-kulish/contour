@@ -169,7 +169,9 @@ Actor:
 
 Requirement:
 - name: Minimum Order Value
-  description: An order must total at least $1.00 before it can be placed.
+  description: >-
+    An order must total at least $1.00 before it can be placed; smaller amounts are rejected to avoid
+    processing-fee losses.
 - name: Web And Mobile
   description: Customers reach the shop from a browser and the mobile app.
 - name: Staff Sign-On
