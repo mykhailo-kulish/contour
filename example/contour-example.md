@@ -1,6 +1,6 @@
 # Contour — Worked Examples
 
-Companion to [`contour.md`](contour.md) (v0.5). The paper's Section 5
+Companion to [`contour.md`](../contour.md) (v0.5). The paper's Section 5
 shows one System on one page; this document walks through the model
 files behind it, the second System it talks to, and a larger System
 split into two Components — and shows, with the checker's real output,
@@ -11,14 +11,14 @@ examples without a new release of the paper.
 |---|---|---|
 | [`order-management.yaml`](order-management.yaml) | Order Management | Three Actors, one per Interface — one of them another System; a neighbour System this one depends on |
 | [`billing.yaml`](billing.yaml) | Billing | The same dependency seen from the other side; an Event-triggered Function |
-| [`contour-engine.yaml`](contour-engine.yaml) | Contour | Two Components, an Interface serving `System`, the redesign rule for split `calls` |
+| [`contour-engine.yaml`](../engine/contour-engine.yaml) | Contour | Two Components, an Interface serving `System`, the redesign rule for split `calls` |
 
 Every finding quoted below is the output of
-[`contour-check.py`](contour-check.py) on these files, or on a copy
+[`contour-check.py`](../skills/contour-check.py) on these files, or on a copy
 with the stated parts removed:
 
 ```
-python3 contour-check.py order-management.yaml
+python3 skills/contour-check.py example/order-management.yaml   # from the repository root
 ```
 
 ---
@@ -263,7 +263,7 @@ Section 6.
 
 ## 3. Contour — a System split into two Components
 
-[`contour-engine.yaml`](contour-engine.yaml) models the Contour engine
+[`contour-engine.yaml`](../engine/contour-engine.yaml) models the Contour engine
 itself: 31 Functions, two Components and three Interfaces.
 
 ```mermaid

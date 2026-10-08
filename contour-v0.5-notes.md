@@ -52,7 +52,7 @@ needs, then the code).
 
 ## contour-engine as one model
 
-`contour-engine.yaml` on this branch is the v0.5 model:
+`engine/contour-engine.yaml` is the v0.5 model:
 
 - **System** Contour: 31 Functions (16 core, 15 Console), 5 Data Objects,
   6 Events.
@@ -167,7 +167,7 @@ LLM applies them; the checker reports what's left.
    that can't be explained is a finding in itself: either a missing
    Requirement or a design worth questioning.
 
-## Checks (`contour-check.py`)
+## Checks (`skills/contour-check.py`)
 
 The checker reads one model and reports two kinds of finding.
 
@@ -214,7 +214,7 @@ Results on contour-engine:
 
 | Model state | Contradictions | Gaps |
 |---|---|---|
-| Complete (`contour-engine.yaml`) | 0 | 0 |
+| Complete (`engine/contour-engine.yaml`) | 0 | 0 |
 | Started top-down: no Components or Interfaces; Console Functions `call` core ones | 0 | 3 — A0, and N2 for each Actor |
 | Top-down, Components allocated, no Interfaces yet | 16 — A3, one per crossing `calls` (redesign due) | 2 — N2 for each Actor |
 | Started bottom-up: no `uses`, no rationale yet | 0 | 7 — N1 for each Actor, W1 for each Component and Interface |
@@ -247,7 +247,7 @@ this System is an Actor of theirs.
 A model may carry a `Neighbour` block per System it touches: the half-open
 view of that System, holding only the Events, Functions (with outcomes) and
 Interfaces this System uses. A neighbour Interface serves this System as an
-Actor of that System — the mirror of rule above. `billing.yaml` is the
+Actor of that System — the mirror of rule above. `example/billing.yaml` is the
 example: Billing's `Create Invoice` consumes `Order Placed` and uses
 `Order gRPC / Fetch Order` from Order Management. The checker resolves the
 Interface, checks that it serves Billing and exposes the Function, that

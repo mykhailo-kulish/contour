@@ -48,7 +48,7 @@ yet* (Section 3.7).
 The paper claims two things: that a readable Contour record is enough to
 propagate a described change into an existing codebase correctly, and
 enough to build a new Component from as a spec. The evidence lives in a
-companion document, [`contour-experiments.md`](contour-experiments.md),
+companion document, [`contour-experiments.md`](experiments/contour-experiments.md),
 which also carries the roadmap. In short: preliminary experiments
 support both claims on one small codebase. On a real undocumented
 legacy subsystem they support the second only for structure: the
@@ -93,9 +93,9 @@ change into code correctly.
 9. [Changelog](#changelog)
 
 Experiment results and the roadmap live in the companion document
-[`contour-experiments.md`](contour-experiments.md); the worked examples,
+[`contour-experiments.md`](experiments/contour-experiments.md); the worked examples,
 their model files and the checker's output on them, in
-[`contour-example.md`](contour-example.md).
+[`example/contour-example.md`](example/contour-example.md).
 
 ---
 
@@ -796,7 +796,7 @@ contradictions are style-neutral; each binding adds its own:
     stay with the owner, and an Event is produced where its Function
     runs.
 
-The reference implementation, `contour-check.py` in this repository,
+The reference implementation, [`skills/contour-check.py`](skills/contour-check.py),
 runs every check above and every gap in Section 3.7 against a model
 file and exits non-zero only on contradictions.
 
@@ -962,7 +962,7 @@ Guardrail: Payment Logic Stays in Billing
 Function: Place Order
   description: Accepts a new order, checks it, and creates it.
   requirements: [Minimum Order Value]
-  guardrails: [Payment Logic Stays in Billing]   # illustration; not in order-management.yaml
+  guardrails: [Payment Logic Stays in Billing]   # illustration; not in example/order-management.yaml
 ```
 
 `Place Order`, not `Calculate Total`, is where the Minimum Order Value
@@ -1170,10 +1170,10 @@ double as a notation reference.
 The **Order Management** System in an e-commerce context, drawn as the
 default one-page diagram of Section 3.2 — the System opened, its
 neighbour half-open. The complete model is
-[`order-management.yaml`](order-management.yaml); its records, the
+[`example/order-management.yaml`](example/order-management.yaml); its records, the
 Billing System on the other side of `Order gRPC`, and a larger System
 split into two Components are walked through in the companion
-[`contour-example.md`](contour-example.md).
+[`example/contour-example.md`](example/contour-example.md).
 
 ```mermaid
 graph LR
@@ -1254,7 +1254,7 @@ own alternative, `Below Minimum`, is drawn as an exit from the Function
 as a whole, its position governed by the guardrail.
 
 **The same model, started from either end.** The checker's findings on
-three states of `order-management.yaml` (Section 3.7; full output in
+three states of `example/order-management.yaml` (Section 3.7; full output in
 the companion):
 
 | State of the model | Contradictions | Gaps |
@@ -1273,7 +1273,7 @@ model stands.
 ## 6. Limitations and Open Questions
 
 Where a limitation has been observed in practice, the bullet points to
-the evidence in [`contour-experiments.md`](contour-experiments.md)
+the evidence in [`contour-experiments.md`](experiments/contour-experiments.md)
 ("Experiments" below), which also carries the roadmap for closing it.
 
 - **No layering** means Contour cannot, by itself, connect a system model
@@ -1358,8 +1358,8 @@ the evidence in [`contour-experiments.md`](contour-experiments.md)
   `Neighbour` block is a hand-written copy of what the neighbour's own
   model declares, and the two can disagree — Order Management's
   half-open Inventory against Inventory's real model, or
-  `billing.yaml`'s view of Order gRPC against
-  `order-management.yaml`'s. A cross-model check is mechanical to add
+  `example/billing.yaml`'s view of Order gRPC against
+  `example/order-management.yaml`'s. A cross-model check is mechanical to add
   and is the natural next step.
 - **`uses` and `exposes` state the same set twice.** An Actor's `uses`
   and its Interfaces' `exposes` must agree, and that redundancy is
@@ -1438,7 +1438,7 @@ The framework keeps its diagram small on purpose (seven elements, two
 zoom levels, one page per diagram) and pushes the completeness that
 guiding a change correctly demands into a structured record underneath
 each element. Three preliminary experiments (documented in
-[`contour-experiments.md`](contour-experiments.md)), one of them on a
+[`contour-experiments.md`](experiments/contour-experiments.md)), one of them on a
 real legacy subsystem, say the split holds for structure and boundary.
 They say it holds for behavior only on small codebases. On real legacy
 logic, the record fixed the Component's shape reliably. Its prose did
@@ -1459,7 +1459,7 @@ a record describes the current or the target system — look closable
 with conventions.
 Whether "enough detail to guide a change" and "small enough to stay
 usable" continue to coexist as the Component grows is what the next
-experiments (the roadmap in `contour-experiments.md`) are meant to find
+experiments (the roadmap in `experiments/contour-experiments.md`) are meant to find
 out; the harder, optional question of regenerating an existing system
 from its record alone comes after.
 
@@ -1570,18 +1570,18 @@ it, never the other way round (Section 3.3).
   step never names what doesn't exist. Checks split into
   **contradictions** (wrong however the model was started) and
   **gaps** (not filled in yet, each with a top-down and a bottom-up
-  next step), with `contour-check.py` as reference implementation;
+  next step), with `skills/contour-check.py` as reference implementation;
   the Section 3.3 list grew the no-split-`calls` and
   single-allocation rules. The full worked model lives in
-  `order-management.yaml`, and Section 5 is compacted to the diagram,
+  `example/order-management.yaml`, and Section 5 is compacted to the diagram,
   the trace and the two-direction results; the records, the Billing
   mirror, the drill-downs, the `contour-engine` example and the
   checker's full output moved to the new companion
-  `contour-example.md`, and the Neighbour snippet to Section 3.7. Every
+  `example/contour-example.md`, and the Neighbour snippet to Section 3.7. Every
   snippet in the paper matches its model file field for field. Section 5 rewritten around the Order
-  Management *System* (`order-management.yaml`): Billing as a
+  Management *System* (`example/order-management.yaml`): Billing as a
   System-as-Actor, Inventory as a half-open neighbour, the Billing
-  mirror (`billing.yaml`), and the checker's findings on a top-down
+  mirror (`example/billing.yaml`), and the checker's findings on a top-down
   and a bottom-up start of the same model. Limitations: the soft-
   consistency bullet replaced (enforced within a model, open between
   models), plus the `uses`/`exposes` redundancy and

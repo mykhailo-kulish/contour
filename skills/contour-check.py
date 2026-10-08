@@ -12,7 +12,7 @@ two kinds of finding:
   GAP            something not filled in yet. Each gap says what the next step
                  would be from each direction. The model is incomplete.
 
-    python3 contour-check.py contour-engine.yaml
+    python3 skills/contour-check.py engine/contour-engine.yaml
 
 Exit status 1 when there are contradictions, 0 otherwise.
 """
