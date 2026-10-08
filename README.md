@@ -56,10 +56,13 @@ skills/                     the checker and agent skills that apply Contour
 ### Models
 
 - [`engine/contour-engine.yaml`](engine/contour-engine.yaml) — a Contour
-  model of the Contour engine itself: a backend that stores, validates,
-  searches and renders Contour specifications, and a browser console,
-  as two Components reached through a Web UI, an MCP server and an
-  internal REST API. It is meant to be **built from** (see below).
+  model of the Contour engine itself: one deployable Component,
+  `contour-engine`, that stores, validates, checks, searches and renders
+  Contour specifications and owns all Contour data. It serves two
+  Actors from the same runtime: the Modeler through the **Contour
+  Console**, a Web UI with a view and an editor per element type, and
+  the AI Agent through the **Contour MCP Server**, as tools. It is meant
+  to be **built from** (see below).
 - [`example/order-management.yaml`](example/order-management.yaml) — the
   paper's worked example: three Actors, one of them another System, and
   a neighbour System it depends on.
@@ -132,14 +135,18 @@ completion.
    > `engine/contour-engine.yaml` using Python/FastAPI.
 
 3. **Let the record drive the build.** The System's Functions are what
-   to build; each Component's `performs`, `owns` and `produces` say
-   where they live — `contour-engine` the backend, `contour-engine-ui`
-   the console; each Interface's `binding` and `exposes` say how each
-   caller reaches them; a Function's `steps` and outcomes give its
-   behavior. Requirements and Guardrails are enforceable obligations,
-   not prose — e.g. the **One Core For Every Actor** guardrail means the
-   MCP server and the REST API are thin channels over one shared
-   service layer, not independent implementations, and **Gaps Never
+   to build — the core (store, retrieve, delete, validate, check,
+   search, render) and, for the Console, a view and a create-or-modify
+   Function per element type. The one Component, `contour-engine`,
+   performs them all and owns all data; each Interface's `binding` and
+   `exposes` say how each caller reaches them — the Console as a Web
+   UI on Material UI, the MCP Server as tools; a Function's `steps` and
+   outcomes give its behavior. Requirements and Guardrails are
+   enforceable obligations, not prose — e.g. the **One Core For Every
+   Actor** guardrail means the Console and the MCP Server are thin
+   channels over one shared service layer, not independent
+   implementations; **Ownership Relations Are Stored** means a name in
+   a record and its relationship edge never disagree; and **Gaps Never
    Block A Write** means validation rejects a write only for a
    contradiction.
 4. **Expect physical-shape decisions the record won't make for you.**
