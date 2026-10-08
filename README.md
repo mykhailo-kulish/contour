@@ -168,6 +168,28 @@ for the full account of building `contour-engine` (Java/Spring Boot) and
 a second, independent `contour-engine-py` (Python/FastAPI) from an
 earlier version of this record, and what diverged between them.
 
+## Connecting an agent to the engine
+
+A running contour-engine serves its MCP Server at
+`http://localhost:8000/mcp`. To give an agent its tools — which the
+`contour-reverse` and `contour-verify` skills use to read and write
+records — add this entry under `mcpServers` in the agent's MCP
+configuration (for Kiro, `.kiro/settings/mcp.json`):
+
+```json
+"contour-engine": {
+    "disabled": false,
+    "command": "npx",
+    "args": [
+        "mcp-remote", "http://localhost:8000/mcp"
+    ]
+}
+```
+
+`mcp-remote` bridges the engine's streamable-HTTP endpoint to agents
+that launch MCP servers as local commands; it needs Node.js for `npx`.
+Change the URL if the engine runs on another host or port.
+
 ## Status
 
 This is a personal working paper (current version: **v0.5**, noted in
