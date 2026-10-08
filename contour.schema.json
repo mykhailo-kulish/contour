@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mykhailo-kulish.github.io/contour/contour.schema.json",
   "title": "Contour model",
-  "description": "A Contour specification in the framework's structured-record style (Section 3) with a nested ownership hierarchy: Components nest under their System (groups), and the elements a Component owns — interfaces, functions, dataObjects, events — nest under that Component. Each Interface serves one caller (an Actor, or `Components`) and exposes the Component's Functions with their operation, request and responses. Actors are top-level. Requirement and Guardrail definitions (Section 3.6) are top-level and referenced by name. Cross-boundary edges (groups, uses, consumes, references, dependsOn) and Function steps are inline by name. No IDs. Field names are camelCase.",
+  "description": "A Contour specification in the framework's structured-record style (Section 3) with a nested ownership hierarchy: Components nest under their System (groups), and the elements a Component owns — interfaces, functions, dataObjects, events — nest under that Component. Each Interface serves one caller (an Actor, or the reserved word `System` for this System's own Components) and exposes the Component's Functions with their operation, request and responses. Actors are top-level. Requirement and Guardrail definitions (Section 3.6) are top-level and referenced by name. A depended-on System is a top-level half-open `Neighbour` (Section 3.7). Cross-boundary edges (groups, uses, consumes, references, depends-on) and Function steps are inline by name. No IDs. Field names are camelCase, except the `depends-on` edge key, which keeps the paper's hyphenated relationship-verb spelling.",
   "type": "object",
   "additionalProperties": false,
   "minProperties": 1,
@@ -40,6 +40,17 @@
       "items": {"$ref": "#/$defs/definition"},
       "minItems": 1,
       "description": "Record-tier Guardrail definitions (Section 3.6), referenced by name from the guardrails list of the elements they bound."
+    },
+    "Neighbour": {
+      "description": "A System this model depends on, drawn half-open (Section 3.7): only the Events, Functions (name and outcomes) and Interfaces this model touches. A neighbour's Interface serves this System as its Actor, which is what lets a cross-System `uses` step resolve. The neighbour's own model holds everything else; the two meet at that Interface. Given as a single Neighbour or a list.",
+      "oneOf": [
+        {"$ref": "#/$defs/neighbour"},
+        {
+          "type": "array",
+          "items": {"$ref": "#/$defs/neighbour"},
+          "minItems": 1
+        }
+      ]
     }
   },
   "$defs": {
@@ -70,6 +81,10 @@
     "guardrails": {
       "$ref": "#/$defs/nameList",
       "description": "Names of Guardrail definitions this element must stay inside (Section 3.6)."
+    },
+    "rationale": {
+      "$ref": "#/$defs/nameList",
+      "description": "Why this Component or Interface exists (Section 3.7): the Actor uses, Requirements, Guardrails, principles, or allocation that justify this lifecycle boundary or this channel. Bottom-up it is recovered from the code's shape; a Component or Interface whose rationale cannot be recovered is itself a finding (a missing Requirement or a design worth questioning), not a reason to invent one."
     },
     "shape": {
       "description": "A shape in the core type notation (Section 3.3): a type expression such as \"uuid\", \"string?\", \"Order.Line Item[1..]\", \"enum(a, b)\" or \"Order { id, status }\", or an inline mapping of field names to shapes.",
@@ -119,7 +134,7 @@
         "uses": {
           "type": "string",
           "minLength": 1,
-          "description": "A Function of another Component, as \"Interface / Function\" — the Interface must serve `Components` and expose the target.",
+          "description": "A Function of another Component, as \"Interface / Function\" — the Interface must serve `System` (within this System) or the calling System by name (across two) and expose the target.",
           "pattern": "^.+ / .+$"
         },
         "reads": {
@@ -318,7 +333,7 @@
     "callerKey": {
       "type": "string",
       "minLength": 1,
-      "description": "The caller an Interface serves: the name of an Actor, or the reserved key `Components` for Functions of other Components, in this System or another (Section 3.3). That an Actor name refers to an existing Actor is checked outside JSON Schema."
+      "description": "The caller an Interface serves: the name of an Actor, or the reserved word `System` for this System's own Components reaching one another (Section 3.3). A caller that is another System is never `System` — it is an Actor, by name. That an Actor name refers to an existing Actor is checked outside JSON Schema."
     },
     "response": {
       "description": "What a caller gets back for one outcome (Section 3.3): a code alone, or a code and a body. Code values are defined by the contract's binding.",
@@ -395,9 +410,10 @@
           "description": "The Component's Functions this Interface makes reachable: keyed by Function name with operation, request and responses, or — for a binding whose conventions cover them, such as a Web UI — a plain list of Function names."
         },
         "requirements": {"$ref": "#/$defs/requirements"},
-        "guardrails": {"$ref": "#/$defs/guardrails"}
+        "guardrails": {"$ref": "#/$defs/guardrails"},
+        "rationale": {"$ref": "#/$defs/rationale"}
       },
-      "description": "An Interface (Section 3): a channel on its Component's boundary through which one caller reaches the Component. A Function is external exactly when some Interface exposes it."
+      "description": "An Interface (Section 3): a channel on its System's boundary through which one caller reaches the Component. It declares no owning Component — it sits on whichever Component performs the Functions it exposes. A Function is external exactly when some Interface exposes it."
     },
     "system": {
       "type": "object",
@@ -436,6 +452,7 @@
         "description": {"$ref": "#/$defs/description"},
         "requirements": {"$ref": "#/$defs/requirements"},
         "guardrails": {"$ref": "#/$defs/guardrails"},
+        "rationale": {"$ref": "#/$defs/rationale"},
         "interfaces": {
           "type": "array",
           "minItems": 1,
@@ -468,9 +485,9 @@
           "$ref": "#/$defs/nameList",
           "description": "Names of Events produced by another Component that this Component reacts to — a Context-view summary of its Functions' `consumes` first steps (Section 3.4)."
         },
-        "dependsOn": {
+        "depends-on": {
           "$ref": "#/$defs/nameList",
-          "description": "Names of Components this Component depends on — a Context-view summary of its Functions' `uses` steps (Section 3.2)."
+          "description": "Names of Components this Component depends on — a Context-view summary of its Functions' `uses` steps (Section 3.2). The relationship verb is `depends-on` (hyphenated, as in the paper), so this field key is too — the one exception to the camelCase field convention."
         }
       }
     },
@@ -547,6 +564,58 @@
         "description": {"$ref": "#/$defs/description"}
       },
       "description": "A record-tier Requirement or Guardrail definition (Section 3.6): a name and a description, referenced by name from the elements it applies to. Never drawn as a diagram element."
+    },
+    "neighbourFunction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "description": {"$ref": "#/$defs/description"},
+        "result": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The name of the ending the main path reaches — enough for a cross-System `uses` step's `becomes` to resolve against."
+        },
+        "alternatives": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/alternative"},
+          "description": "Every other way this neighbour Function can end, keyed by outcome name. Only the outcomes this model's `uses`/`becomes` steps need resolve."
+        }
+      },
+      "description": "A Function of a neighbouring System, half-open: name and the outcomes this model touches, not its full internal record (Section 3.7)."
+    },
+    "neighbour": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name",
+          "description": "The neighbouring System's name — what a cross-System `uses` step names across two Systems."
+        },
+        "description": {"$ref": "#/$defs/description"},
+        "interfaces": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/interface"},
+          "description": "The Interfaces this neighbour offers that this model reaches; each serves this System as its Actor (Section 3.7)."
+        },
+        "functions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/neighbourFunction"},
+          "description": "The neighbour's Functions this model touches, half-open: name and outcomes only."
+        },
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/event"},
+          "description": "The neighbour's Events this model touches (produces for this model to consume, or consumes from it)."
+        }
+      },
+      "description": "The half-open view of a depended-on System (Section 3.7): only what this model touches. The neighbour's own model holds the rest."
     }
   }
 }

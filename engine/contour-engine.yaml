@@ -13,7 +13,7 @@ System:
   description: >-
     Stores, searches and manages Contour specifications — the models and structured records defined by
     the Contour framework — for the people who model with them and for AI agents that work with them.
-  requirements: [Console Released Independently, Local start composition]
+  requirements: [Local start composition, Element Name Is Unique Within Its System]
   guardrails:
   - Follow Technology Radar
   - No Infrastructure In Model
@@ -36,8 +36,16 @@ System:
       Rejected: >-
         The element contradicts the Contour metamodel or persisted state; nothing is stored.
     behavior: >-
-      Upserts the element row, its record body and its declared outgoing edges in a single transaction.
-    requirements: [Element Write Is Atomic, Element Must Be Well Formed]
+      Upserts the element row, its record body and its outgoing edges in a single transaction. Before
+      validating, it brings the record's references and the outgoing edges into agreement both ways: every
+      name the record lists — a System's groups, a Component's performs, owns and produces, an Interface's
+      exposes, an Actor's uses, a Function's step and alternative-effect targets — that resolves within
+      the element's System becomes an edge (a uses step through the Interface it names, which may be a
+      neighbour's), and every outgoing edge of a name-list verb is listed in the record. A Function's
+      steps are never rewritten from edges, because order lives only in the steps. A name that resolves
+      to nothing stays as it is, a gap.
+    requirements: [Element Write Is Atomic, Element Must Be Well Formed, Ownership Relations Are Stored,
+      Element Name Is Unique Within Its System]
     guardrails: [Validation Precedes Persistence, Gaps Never Block A Write]
   - name: Delete Element
     description: >-
@@ -74,7 +82,10 @@ System:
     alternatives: {Invalid: One or more violations were found; they are reported in full.}
     behavior: >-
       Enforces the Contour v0.5 contradictions (Section 3.3) that can be decided at element scope against
-      persisted state: a relationship target already exists; allocation is single — one performer per
+      persisted state: an element other than a System names a stored System; its name is not taken by
+      another element of that System, nor a System's name by another System; a relationship target
+      already exists, and allocation, exposure, calls, reads, modifies and produces stay inside the
+      System, while only uses, consumes, references and depends-on may reach another System; allocation is single — one performer per
       Function, one owner per Data Object, one producing Component per Event; reads and modifies stay
       with the owner, and an Event is produced where its Function runs; a calls step stays within one
       Component; an Interface serves an existing Actor or System and exposes only Functions one Component
@@ -84,12 +95,12 @@ System:
       caller's own alternatives; consumes appears only first; an Actor uses only existing Functions that
       no Event starts; Event names are past tense; every referenced Requirement and Guardrail is defined.
       An element that leaves the model incomplete is valid: gaps are Check Model's concern, never this one's.
-    requirements: [Enforce Contour Invariants]
+    requirements: [Enforce Contour Invariants, Element Name Is Unique Within Its System]
     guardrails: [Read-only function, Gaps Never Block A Write]
   - name: Check Model
     description: >-
-      Checks a whole stored model and reports what is wrong with it separately from what is not filled
-      in yet.
+      Checks one stored System — the System and everything that belongs to it — and reports what is
+      wrong with it separately from what is not filled in yet.
     steps:
     - {reads: Contour Element}
     - {reads: Contour Relationship}
@@ -97,15 +108,15 @@ System:
     - {reads: Contour Requirement}
     - {reads: Contour Guardrail}
     result: Checked
-    alternatives: {Model Not Found: No model has this id.}
+    alternatives: {System Not Found: No System has this id.}
     behavior: >-
       Reports contradictions — wrong however the model was started — and gaps — not filled in yet — in
       two separate lists. Every gap carries its next step from each direction: top-down, from the Actors
       and the Functions they use, and bottom-up, from the Components and Interfaces found in code. A model
-      with gaps and no contradictions is a model in progress, not an invalid one. Covers what element-scope
+      System with gaps and no contradictions is a model in progress, not an invalid one. Covers what element-scope
       validation can't decide: allocation coverage, Actor uses against what the Interfaces serving it
       expose, Interfaces serving System against the uses steps that call them, rationale, and uses steps
-      against the model's Neighbour Systems.
+      against the neighbour Systems its edges reach.
     requirements: [Enforce Contour Invariants, Report Gaps For Both Directions]
     guardrails: [Read-only function]
   - name: Store Requirement
@@ -173,7 +184,8 @@ System:
   - name: Search Specifications
     description: >-
       Finds stored elements by free text over their records and by structural filters — element type,
-      name, the System it belongs to or the Component it is allocated to — one page at a time.
+      part of a name or a whole name, the System it belongs to (the System included) or the Component it
+      is allocated to — one page at a time.
     steps:
     - {reads: Contour Element}
     - {reads: Contour Record}
@@ -201,14 +213,14 @@ System:
     guardrails: [Proper field indexes, Read-only function]
   - name: Render Diagram
     description: >-
-      Produces a diagram (Mermaid) of a whole stored model — the Context view, or a Functionality-view
+      Produces a diagram (Mermaid) of one stored System — the Context view, or a Functionality-view
       drill-down.
     steps:
     - {reads: Contour Element}
     - {reads: Contour Relationship}
     - {reads: Contour Record}
     result: Rendered
-    alternatives: {Model Not Found: No model has this id.}
+    alternatives: {System Not Found: No System has this id.}
     behavior: >-
       Derives the diagram from the stored elements and relationships: the System opened, each Interface on
       the boundary of the Component that performs what it exposes, neighbour Systems half-open, Function
@@ -226,224 +238,194 @@ System:
     result: Rendered
     alternatives: {Not Found: No element has this id.}
     guardrails: [Read-only function]
-  - name: List Components
-    description: >-
-      Presents the Components the engine holds as a paginated list a person can scan and pick from, each
-      shown by name and short description.
+  # --- Console screen Functions (Web UI binding over the core) ---------------
+  # Each View screen reads the Data Objects it displays; each Create or Modify
+  # screen calls the core write Function that validates and persists. The raw
+  # element and definition writes are no longer exposed on the Console directly
+  # (they remain on the MCP Server for the AI Agent); the Console exposes only
+  # these screens, and each screen's steps name the core Function it drives.
+  - name: View System
+    description: Renders a UI with System View widget with its name, description, Actors and record.
     steps:
-    - uses: Contour REST API / Search Specifications
-      becomes: {Unreachable: Engine Unavailable}
-    result: Listed
-    alternatives: {Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.}
-    behavior: >-
-      Asks the engine for one page of Components — a bounded slice plus the total count, ordered stably
-      by name so paging is repeatable — and presents it with controls for the next and previous page.
-      A browsing entry point into View Element.
-    requirements: [Listings Are Paginated]
-    guardrails: [Read-only function]
-  - name: Find Specifications
+    - {reads: Contour Element}
+    - {reads: Contour Record}
+    - {reads: Contour Relationship}
+    result: Rendered
+  - name: View Component
     description: >-
-      Lets a person find stored elements of any type by free text over their records, and presents the
-      matches to open.
+      Renders a UI with Component View widget: the Component's name, description, the Functions it performs,
+      the Data Objects it owns, the Events it produces, its rationale/requirements/guardrails, relationships
+      and diagram. Element ids' should be resolved to element names.
     steps:
-    - uses: Contour REST API / Search Specifications
-      becomes: {Unreachable: Engine Unavailable}
-    result: Matches Shown
-    alternatives: {Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.}
-    behavior: >-
-      Presents the matches by relevance, best first, each labelled with its element type. Selecting a
-      match opens it in View Element.
-    requirements: [Uses full-text search]
-    guardrails: [Read-only function]
-  - name: View Element
+    - {reads: Contour Element}
+    - {reads: Contour Record}
+    - {reads: Contour Relationship}
+    result: Rendered
+  - name: View Interface
     description: >-
-      Shows one element of any type in detail — its structured record, the requirements and guardrails
-      it references, its relationships — together with its element-scoped diagram.
+      Renders a UI with Interface View widget: the Interface's name, description, who it serves, its binding,
+      the Functions it exposes, its rationale/requirements/guardrails, relationships and diagram. Element
+      ids' should be resolved to element names.
     steps:
-    - uses: Contour REST API / Retrieve Element
-      becomes: {Not Found: Not Found, Unreachable: Engine Unavailable}
-    - uses: Contour REST API / Render Element Diagram
-      becomes: {Not Found: Not Found, Unreachable: Engine Unavailable}
-    result: Shown
-    alternatives:
-      Not Found: The element no longer exists.
-      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
-    behavior: >-
-      Presents the record's fields in readable form, adapting to the element type — steps and outcomes
-      for a Function, exposed Functions for an Interface, schema for a Data Object — and the diagram exactly
-      as the engine renders it, using the full widget width and zoomable. From any relationship the person
-      can open the element on the other end.
-    guardrails: [Diagrams Are Shown As Rendered, Read-only function]
-  - name: View Model Diagram
+    - {reads: Contour Element}
+    - {reads: Contour Record}
+    - {reads: Contour Relationship}
+    result: Rendered
+  - name: View Function
     description: >-
-      Shows the whole-model diagram for the model the element in view belongs to — the Context-level counterpart
-      to View Element's diagram.
+      Renders a UI with Function View widget: its name, description, ordered steps, outcomes (the result
+      and the alternatives), behavior, and the rationale, requirements and guardrails it references, together
+      with the element's relationships and diagram. Element ids' should be resolved to element names.
     steps:
-    - uses: Contour REST API / Render Diagram
-      becomes: {Model Not Found: Not Found, Unreachable: Engine Unavailable}
-    result: Shown
-    alternatives:
-      Not Found: The model no longer exists.
-      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
-    guardrails: [Diagrams Are Shown As Rendered, Read-only function]
-  - name: Review Model
+    - {reads: Contour Element}
+    - {reads: Contour Record}
+    - {reads: Contour Relationship}
+    result: Rendered
+  - name: View Event
     description: >-
-      Shows a person what is wrong with the model in view and what is left to fill in, with the next
-      step for each.
+      Renders a UI with Event View widget: the Event's name, description, schema, the Components that produce
+      it and the Functions that consume it, its rationale/requirements/guardrails, relationships and diagram.
+      Element ids' should be resolved to element names.
     steps:
-    - uses: Contour REST API / Check Model
-      becomes: {Model Not Found: Not Found, Unreachable: Engine Unavailable}
-    result: Shown
-    alternatives:
-      Not Found: The model no longer exists.
-      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
-    behavior: >-
-      Shows contradictions first, then gaps; each gap shows both next steps, top-down and bottom-up, so the
-      person can continue from whichever end they started. Selecting a finding opens the element it concerns
-      in View Element.
-    guardrails: [Read-only function]
-  - name: Find Requirements
+    - {reads: Contour Element}
+    - {reads: Contour Record}
+    - {reads: Contour Relationship}
+    result: Rendered
+  - name: View Data Object
     description: >-
-      Lets a person search the Requirement definitions by free text and presents the matches by relevance.
+      Renders a UI with Data Object View widget: the Data Object's name, description, schema, the Component
+      that owns it and the Functions that read or modify it, its rationale/requirements/guardrails, relationships
+      and diagram. Element ids' should be resolved to element names.
     steps:
-    - uses: Contour REST API / Search Requirements
-      becomes: {Unreachable: Engine Unavailable}
-    result: Matches Shown
-    alternatives: {Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.}
-    behavior: Selecting a match opens it in View Requirement.
-    requirements: [Uses full-text search]
-    guardrails: [Read-only function]
+    - {reads: Contour Element}
+    - {reads: Contour Record}
+    - {reads: Contour Relationship}
+    result: Rendered
+  - name: View Actor
+    description: >-
+      Renders a UI with Actor View widget: the Actor's name, description, the Functions it uses, its
+      rationale/requirements/guardrails, relationships and diagram. Element ids' should be resolved to
+      element names.
+    steps:
+    - {reads: Contour Element}
+    - {reads: Contour Record}
+    - {reads: Contour Relationship}
+    result: Rendered
   - name: View Requirement
     description: >-
-      Shows one Requirement definition — its name and the obligation it states. The requirement names
-      on an element in View Element link here.
+      Renders a UI with Requirement View widget: the Requirement definition's name and the obligation it
+      states, together with the elements that reference it (read from the records that name it). A read
+      view the Modeler lands on when opening a Requirement definition.
     steps:
-    - uses: Contour REST API / Retrieve Requirement
-      becomes: {Not Found: Not Found, Unreachable: Engine Unavailable}
-    result: Shown
-    alternatives:
-      Not Found: No Requirement has this name.
-      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
-    guardrails: [Read-only function]
-  - name: Find Guardrails
-    description: >-
-      Lets a person search the Guardrail definitions by free text and presents the matches by relevance.
-    steps:
-    - uses: Contour REST API / Search Guardrails
-      becomes: {Unreachable: Engine Unavailable}
-    result: Matches Shown
-    alternatives: {Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.}
-    behavior: Selecting a match opens it in View Guardrail.
-    requirements: [Uses full-text search]
-    guardrails: [Read-only function]
+    - {reads: Contour Requirement}
+    - {reads: Contour Record}
+    result: Rendered
   - name: View Guardrail
     description: >-
-      Shows one Guardrail definition — its name and the boundary it states. The guardrail names on an
-      element in View Element link here.
+      Renders a UI with Guardrail View widget: the Guardrail definition's name and the boundary it states,
+      together with the elements that reference it (read from the records that name it). A read view the
+      Modeler lands on when opening a Guardrail definition.
     steps:
-    - uses: Contour REST API / Retrieve Guardrail
-      becomes: {Not Found: Not Found, Unreachable: Engine Unavailable}
-    result: Shown
-    alternatives:
-      Not Found: No Guardrail has this name.
-      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
-    guardrails: [Read-only function]
-  - name: Edit Element
+    - {reads: Contour Guardrail}
+    - {reads: Contour Record}
+    result: Rendered
+  - name: Create or Modify System
     description: >-
-      Lets a person create a Contour element or change an existing one — its name, type, System, record
-      and, through the record's named fields, its relationships — and submit it to the engine.
+      UI Form that offers to edit attributes required to create new or edit existing System element.
+      Element ids' should be resolved to element names. Submitted through the core, which validates every
+      write.
     steps:
-    - uses: Contour REST API / Store Element
-      becomes: {Rejected: Rejected, Unreachable: Engine Unavailable}
-    result: Saved
-    alternatives:
-      Rejected: >-
-        The engine found violations; they are shown against the offending fields and nothing is stored.
-      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
-    behavior: >-
-      The form adapts to the element type and is pre-filled from View Element when editing an existing
-      element. Relationships are edited as the record's named fields, never as separate objects.
-    guardrails: [Writes Are Validated By The System]
-  - name: Remove Element
+    - {calls: Store Element}
+    - {calls: Delete Element}
+    result: Submitted
+  - name: Create or Modify Component
     description: >-
-      Lets a person remove a stored element — its record and its relationships — after confirming the
-      intent.
+      UI Form that offers to edit the attributes required to create a new or edit an existing Component
+      element: its description, the Functions it performs, the Data Objects it owns, the Events it produces,
+      and its rationale/requirements/guardrails. Element ids' should be resolved to element names. Submitted
+      through the core, which validates every write.
     steps:
-    - uses: Contour REST API / Delete Element
-      becomes: {Unreachable: Engine Unavailable}
-    result: Deleted
-    alternatives: {Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.}
-    behavior: >-
-      An element that is already gone counts as deleted. The Console performs no cascade logic of its
-      own; removal semantics are the engine's.
-    guardrails: [Writes Are Validated By The System]
-  - name: Edit Requirement
+    - {calls: Store Element}
+    - {calls: Delete Element}
+    result: Submitted
+  - name: Create or Modify Interface
     description: >-
-      Lets a person create a Requirement definition or change an existing one's description, and submit
-      it to the engine.
+      UI Form that offers to edit the attributes required to create a new or edit an existing Interface
+      element: its description, who it serves, its binding, the Functions it exposes, and its
+      rationale/requirements/guardrails. Element ids' should be resolved to element names. Submitted through
+      the core, which validates every write.
     steps:
-    - uses: Contour REST API / Store Requirement
-      becomes: {Invalid: Rejected, Name Taken: Rejected, Unreachable: Engine Unavailable}
-    result: Saved
-    alternatives:
-      Rejected: >-
-        The engine refused the name or description; the reason is shown and nothing is stored.
-      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
-    guardrails: [Writes Are Validated By The System]
-  - name: Edit Guardrail
+    - {calls: Store Element}
+    - {calls: Delete Element}
+    result: Submitted
+  - name: Create or Modify Function
     description: >-
-      Lets a person create a Guardrail definition or change an existing one's description, and submit
-      it to the engine.
+      UI Form that offers to edit attributes required to create new or edit existing Function element: its
+      description, ordered steps, result, alternatives, behavior, and the rationale, requirements and
+      guardrails it references. Element ids' should be resolved to element names. Submitted through the
+      core, which validates every write.
     steps:
-    - uses: Contour REST API / Store Guardrail
-      becomes: {Invalid: Rejected, Name Taken: Rejected, Unreachable: Engine Unavailable}
-    result: Saved
-    alternatives:
-      Rejected: >-
-        The engine refused the name or description; the reason is shown and nothing is stored.
-      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
-    guardrails: [Writes Are Validated By The System]
-  - name: Remove Requirement
+    - {calls: Store Element}
+    - {calls: Delete Element}
+    result: Submitted
+  - name: Create or Modify Event
     description: >-
-      Lets a person remove a Requirement definition after confirming the intent.
+      UI Form that offers to edit the attributes required to create a new or edit an existing Event element:
+      its description and schema, and its rationale/requirements/guardrails. Element ids' should be resolved
+      to element names. Submitted through the core, which validates every write.
     steps:
-    - uses: Contour REST API / Delete Requirement
-      becomes: {Still Referenced: Still Referenced, Unreachable: Engine Unavailable}
-    result: Deleted
-    alternatives:
-      Still Referenced: >-
-        A stored element still references it; the refusal is shown and the definition stays.
-      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
-    behavior: >-
-      The Console never rewrites referencing elements to break a reference on the person's behalf.
-    guardrails: [Writes Are Validated By The System]
-  - name: Remove Guardrail
+    - {calls: Store Element}
+    - {calls: Delete Element}
+    result: Submitted
+  - name: Create or Modify Data Object
     description: >-
-      Lets a person remove a Guardrail definition after confirming the intent.
+      UI Form that offers to edit the attributes required to create a new or edit an existing Data Object
+      element: its description and schema, and its rationale/requirements/guardrails. Element ids' should
+      be resolved to element names. Submitted through the core, which validates every write.
     steps:
-    - uses: Contour REST API / Delete Guardrail
-      becomes: {Still Referenced: Still Referenced, Unreachable: Engine Unavailable}
-    result: Deleted
-    alternatives:
-      Still Referenced: >-
-        A stored element still references it; the refusal is shown and the definition stays.
-      Engine Unavailable: The engine couldn't be reached; nothing is shown or changed.
-    behavior: >-
-      The Console never rewrites referencing elements to break a reference on the person's behalf.
-    guardrails: [Writes Are Validated By The System]
+    - {calls: Store Element}
+    - {calls: Delete Element}
+    result: Submitted
+  - name: Create or Modify Actor
+    description: >-
+      UI Form that offers to edit the attributes required to create a new or edit an existing Actor element:
+      its description, the Functions it uses, and its rationale/requirements/guardrails. Element ids' should
+      be resolved to element names. Submitted through the core, which validates every write.
+    steps:
+    - {calls: Store Element}
+    - {calls: Delete Element}
+    result: Submitted
+  - name: Create or Modify Requirement
+    description: >-
+      UI Form that offers to edit the attributes required to create a new or edit an existing Requirement
+      definition: its name and the obligation (description) it states. Submitted through the core, which
+      validates every write.
+    steps:
+    - {calls: Store Requirement}
+    - {calls: Delete Requirement}
+    result: Submitted
+  - name: Create or Modify Guardrail
+    description: >-
+      UI Form that offers to edit the attributes required to create a new or edit an existing Guardrail
+      definition: its name and the boundary (description) it states. Submitted through the core, which
+      validates every write.
+    steps:
+    - {calls: Store Guardrail}
+    - {calls: Delete Guardrail}
+    result: Submitted
   dataObjects:
   - name: Contour Element
     description: >-
       One stored Contour element — a System, Component, Interface, Function, Event, Data Object or Actor
-      — persisted and retrieved individually rather than as part of a whole-model payload. Every element
-      but a System belongs to one System; which Component a Function, Data Object or Event is allocated
-      to is a performs, owns or produces relationship, and an Interface's Component is derived. A neighbour
-      System is stored like any other, half-open: only the elements this model touches.
+      — persisted and retrieved individually rather than as part of a whole-System payload. Every element
+      but a System belongs to one System, which is its scope: names are unique within it. Which Component
+      a Function, Data Object or Event is allocated to is a performs, owns or produces relationship, and an
+      Interface's Component is derived. A neighbour System is stored like any other, half-open: only the
+      elements another System touches.
     schema:
       id: uuid
       name: string
       version: integer
-      modelId: uuid
       systemId: uuid?
       createdAt: date-time
       updatedAt: date-time
@@ -451,10 +433,9 @@ System:
   - name: Contour Relationship
     description: >-
       One edge between two already-persisted elements. Declared and persisted as part of the "from" element's
-      Store Element, never submitted on its own.
+      Store Element — explicitly, or derived from a reference its record makes — never submitted on its own.
     schema:
       id: uuid
-      modelId: uuid
       fromElementId: uuid
       toElementId: uuid
       verb: >-
@@ -487,14 +468,14 @@ System:
       One Contour element, its record and its outgoing relationships were created or updated.
     schema:
       elementId: uuid
-      modelId: uuid
+      systemId: uuid?
       name: string
       elementType: Contour Element.elementType
       version: integer
       storedAt: date-time
   - name: Element Deleted
     description: One Contour element, its record and its relationships were removed.
-    schema: {elementId: uuid, modelId: uuid, deletedAt: date-time}
+    schema: {elementId: uuid, systemId: "uuid?", deletedAt: date-time}
   - name: Requirement Stored
     description: One Requirement definition was created or updated.
     schema: {name: string, version: integer, storedAt: date-time}
@@ -510,9 +491,10 @@ System:
   components:
   - name: contour-engine
     description: >-
-      Stores, validates, searches and renders Contour specifications. Performs every Function and owns
-      all Contour data.
-    rationale: [One Core For Every Actor, 'principle 4: data has a home']
+      The Contour System deployable. Stores, validates, searches and renders Contour
+      specifications, owns all Contour data, and serves the Modeler's browser Console and the AI Agent's
+      MCP tools from the same runtime. Performs every Function.
+    rationale: [One Core For Every Actor, 'principle 4: data has a home', Works In A Browser]
     performs:
     - Store Element
     - Delete Element
@@ -530,6 +512,24 @@ System:
     - Search Guardrails
     - Render Diagram
     - Render Element Diagram
+    - View System
+    - View Component
+    - View Interface
+    - View Function
+    - View Event
+    - View Data Object
+    - View Actor
+    - View Requirement
+    - View Guardrail
+    - Create or Modify System
+    - Create or Modify Component
+    - Create or Modify Interface
+    - Create or Modify Function
+    - Create or Modify Event
+    - Create or Modify Data Object
+    - Create or Modify Actor
+    - Create or Modify Requirement
+    - Create or Modify Guardrail
     owns:
     - Contour Element
     - Contour Relationship
@@ -543,54 +543,48 @@ System:
     - Requirement Deleted
     - Guardrail Stored
     - Guardrail Deleted
-    requirements: [Local start composition]
-  - name: contour-engine-ui
-    description: >-
-      The browser application a Modeler works in. Performs the person-level Functions — listing, finding,
-      viewing, reviewing, editing and removing — each of which uses the engine through the Contour REST API. Owns
-      no Contour data.
-    rationale: [Console Released Independently, Works In A Browser]
-    performs:
-    - List Components
-    - Find Specifications
-    - View Element
-    - View Model Diagram
-    - Review Model
-    - Find Requirements
-    - View Requirement
-    - Find Guardrails
-    - View Guardrail
-    - Edit Element
-    - Remove Element
-    - Edit Requirement
-    - Edit Guardrail
-    - Remove Requirement
-    - Remove Guardrail
-    requirements: [Local start composition]
+    requirements: [Local start composition, Ownership Relations Are Stored, Element Name Is Unique Within Its System]
   interfaces:
   - name: Contour Console
     description: >-
-      The views a Modeler uses: listing, search, element and definition detail with their diagrams, and
-      create, edit and remove.
-    rationale: [Modeler needs, Works In A Browser]
+      The browser application a Modeler works in: listing, search, element and definition detail with
+      their diagrams, System review, and create, edit and remove. A Web UI binding over the engine's own
+      Functions — the same core the AI Agent reaches through the MCP Server, presented as screens and
+      actions. It exposes only screen Functions (View / Create or Modify, plus Search, Check Model and the
+      Render diagrams); the raw element and definition writes those screens drive are the core Functions
+      they call, reached through the engine, not exposed here. Its browsing, pagination, confirm-before-remove
+      and navigation are binding conventions, not separate Functions.
+    rationale: [Modeler needs, Works In A Browser, One Core For Every Actor]
     serves: Modeler
-    binding: {style: Web UI}
+    binding:
+      style: Web UI
+      framework: {name: material-ui, llm-guide: 'https://mui.com/material-ui/llms.txt'}
+    requirements: [Element View in UI]
     exposes:
-    - List Components
-    - Find Specifications
-    - View Element
-    - View Model Diagram
-    - Review Model
-    - Find Requirements
+    - Check Model
+    - Search Specifications
+    - Search Requirements
+    - Search Guardrails
+    - Render Diagram
+    - Render Element Diagram
+    - View System
+    - View Component
+    - View Interface
+    - View Function
+    - View Event
+    - View Data Object
+    - View Actor
     - View Requirement
-    - Find Guardrails
     - View Guardrail
-    - Edit Element
-    - Remove Element
-    - Edit Requirement
-    - Edit Guardrail
-    - Remove Requirement
-    - Remove Guardrail
+    - Create or Modify System
+    - Create or Modify Component
+    - Create or Modify Interface
+    - Create or Modify Function
+    - Create or Modify Event
+    - Create or Modify Data Object
+    - Create or Modify Actor
+    - Create or Modify Requirement
+    - Create or Modify Guardrail
   - name: Contour MCP Server
     description: >-
       Model Context Protocol access for AI Agents, reading and storing Contour specifications as tools.
@@ -619,18 +613,23 @@ System:
         responses:
           Found:
             code: result
-            body: {element: Contour Element, record: Contour Record, relationships: 'Contour Relationship[]'}
+            body:
+              element: Contour Element
+              record: Contour Record
+              relationships: >-
+                { id: uuid, verb: Contour Relationship.verb, from: Contour Element { id, name, elementType,
+                systemId }, to: Contour Element { id, name, elementType, systemId } }[]
           Not Found: error
       Check Model:
         operation: check_model
-        request: {modelId: uuid}
+        request: {systemId: uuid}
         responses:
           Checked:
             code: result
             body:
               contradictions: '{ rule: string, finding: string }[]'
               gaps: '{ rule: string, finding: string, topDown: string, bottomUp: string }[]'
-          Model Not Found: error
+          System Not Found: error
       Store Requirement:
         operation: store_requirement
         request: {id: uuid, name: string, description: string}
@@ -671,6 +670,7 @@ System:
           query: string?
           elementType: Contour Element.elementType?
           name: string?
+          exactName: string?
           systemId: uuid?
           componentId: uuid?
           page: integer?
@@ -691,12 +691,12 @@ System:
           Found: {code: result, body: 'Contour Guardrail[]'}
       Render Diagram:
         operation: render_diagram
-        request: {modelId: uuid}
+        request: {systemId: uuid}
         responses:
           Rendered:
             code: result
             body: {mermaid: string}
-          Model Not Found: error
+          System Not Found: error
       Render Element Diagram:
         operation: render_element_diagram
         request: {id: uuid}
@@ -705,144 +705,37 @@ System:
             code: result
             body: {mermaid: string}
           Not Found: error
-  - name: Contour REST API
-    description: >-
-      REST/JSON access for other Components. Exists because the Console's Functions run in their own Component
-      and use the engine's Functions from there.
-    rationale: [Console Released Independently]
-    serves: System
-    binding: {style: OpenAPI, base: /api/v1, auth: service token, errors: RFC 7807}
-    requirements: [Generate OpenAPI From The Interface]
-    exposes:
-      Store Element:
-        operation: POST /elements
-        request:
-          element: Contour Element { id?, name, elementType, systemId? }
-          record: Contour Record.body
-          relationships: Contour Relationship { verb, toElementId }[]
-        responses:
-          Stored: {code: 200, body: Contour Element}
-          Rejected:
-            code: 422
-            body: {violations: 'string[1..]'}
-      Delete Element:
-        operation: DELETE /elements/{id}
-        request: {id: uuid}
-        responses: {Deleted: 204, Already Absent: 204}
-      Retrieve Element:
-        operation: GET /elements/{id}
-        request: {id: uuid}
-        responses:
-          Found:
-            code: 200
-            body: {element: Contour Element, record: Contour Record, relationships: 'Contour Relationship[]'}
-          Not Found: 404
-      Check Model:
-        operation: GET /models/{modelId}/check
-        request: {modelId: uuid}
-        responses:
-          Checked:
-            code: 200
-            body:
-              contradictions: '{ rule: string, finding: string }[]'
-              gaps: '{ rule: string, finding: string, topDown: string, bottomUp: string }[]'
-          Model Not Found: 404
-      Store Requirement:
-        operation: PUT /requirements/{id}
-        request: {id: uuid, name: string, description: string}
-        responses:
-          Stored: {code: 200, body: Contour Requirement}
-          Invalid: 400
-          Name Taken: 409
-      Retrieve Requirement:
-        operation: GET /requirements/{name}
-        request: {name: string}
-        responses:
-          Found: {code: 200, body: Contour Requirement}
-          Not Found: 404
-      Delete Requirement:
-        operation: DELETE /requirements/{name}
-        request: {name: string}
-        responses: {Deleted: 204, Already Absent: 204, Still Referenced: 409}
-      Store Guardrail:
-        operation: PUT /guardrails/{id}
-        request: {id: uuid, name: string, description: string}
-        responses:
-          Stored: {code: 200, body: Contour Guardrail}
-          Invalid: 400
-          Name Taken: 409
-      Retrieve Guardrail:
-        operation: GET /guardrails/{name}
-        request: {name: string}
-        responses:
-          Found: {code: 200, body: Contour Guardrail}
-          Not Found: 404
-      Delete Guardrail:
-        operation: DELETE /guardrails/{name}
-        request: {name: string}
-        responses: {Deleted: 204, Already Absent: 204, Still Referenced: 409}
-      Search Specifications:
-        operation: GET /elements
-        request:
-          query: string?
-          elementType: Contour Element.elementType?
-          name: string?
-          systemId: uuid?
-          componentId: uuid?
-          page: integer?
-          pageSize: integer?
-        responses:
-          Found:
-            code: 200
-            body: {items: 'Contour Element { id, name, elementType }[]', total: integer}
-      Search Requirements:
-        operation: GET /requirements
-        request: {query: string}
-        responses:
-          Found: {code: 200, body: 'Contour Requirement[]'}
-      Search Guardrails:
-        operation: GET /guardrails
-        request: {query: string}
-        responses:
-          Found: {code: 200, body: 'Contour Guardrail[]'}
-      Render Diagram:
-        operation: GET /models/{modelId}/diagram
-        request: {modelId: uuid}
-        responses:
-          Rendered:
-            code: 200
-            body: {mermaid: string}
-          Model Not Found: 404
-      Render Element Diagram:
-        operation: GET /elements/{id}/diagram
-        request: {id: uuid}
-        responses:
-          Rendered:
-            code: 200
-            body: {mermaid: string}
-          Not Found: 404
-
 Actor:
 - name: Modeler
   description: >-
     A person who works with Contour specifications — an architect, developer or analyst — browsing, reading
-    and editing them.
+    and editing them in a web browser. Reaches the same Functions the AI Agent does, through the Contour
+    Console (a Web UI binding) rather than through MCP.
   uses:
-  - List Components
-  - Find Specifications
-  - View Element
-  - View Model Diagram
-  - Review Model
-  - Find Requirements
+  - View System
+  - View Component
+  - View Interface
+  - View Function
+  - View Event
+  - View Data Object
+  - View Actor
   - View Requirement
-  - Find Guardrails
   - View Guardrail
-  - Edit Element
-  - Remove Element
-  - Edit Requirement
-  - Edit Guardrail
-  - Remove Requirement
-  - Remove Guardrail
+  - Create or Modify System
+  - Create or Modify Component
+  - Create or Modify Interface
+  - Create or Modify Function
+  - Create or Modify Event
+  - Create or Modify Data Object
+  - Create or Modify Actor
+  - Create or Modify Requirement
+  - Create or Modify Guardrail
+  - Check Model
+  - Search Specifications
+  - Search Requirements
+  - Search Guardrails
+  - Render Diagram
+  - Render Element Diagram
   requirements: [Works In A Browser, Listings Are Paginated]
   guardrails: [Diagrams Are Shown As Rendered]
 - name: AI Agent
@@ -903,10 +796,6 @@ Requirement:
   description: >-
     A listing the Console presents is requested in bounded pages with a stable, repeatable order and a
     total count, never as the whole collection at once.
-- name: Console Released Independently
-  description: >-
-    What a Modeler sees and does in the browser can be changed and released without releasing, migrating
-    or restarting the storage and validation of Contour data.
 - name: Works In A Browser
   description: >-
     The Modeler works with the System in a web browser, with nothing to install.
@@ -914,11 +803,36 @@ Requirement:
   description: >-
     An AI Agent reaches the System as a set of tools it can discover and call through the Model Context
     Protocol.
-- name: Generate OpenAPI From The Interface
+- name: Ownership Relations Are Stored
   description: >-
-    The OpenAPI specification is assembled from the Contour REST API Interface of this record and kept
-    in resources as the source for code generation; it is regenerated whenever the Interface changes,
-    never edited by hand.
+    However a reference is submitted — as an explicit relationship edge, or as a name in the element's
+    record (a System's Components in groups, a Component's Functions in performs, its Data Objects in owns,
+    its Events in produces, an Interface's Functions in exposes, an Actor's Functions in uses, a Function's
+    step and alternative-effect targets) — Store Element stores both: each name that resolves within the
+    element's System becomes an edge, and each outgoing edge of a name-list verb is listed by name in the
+    record. Once stored, every relation the specification implies is retrievable, appears in the rendered
+    diagram and in the Console's view, and the record and the edges never disagree. A Function's steps are
+    the one exception: an edge never adds a step, because order lives only in the steps.
+- name: Element Name Is Unique Within Its System
+  description: >-
+    A System is the scope of its elements' names: no two elements of one System — the System itself
+    included — share a name, and no two Systems share a name. A name in a record, a step or an Interface's
+    serves therefore resolves to exactly one element of the System; a name reached across Systems (a uses
+    or consumes step to a neighbour) resolves through the Interface it names, or only when it is unique
+    across all Systems. A store that would duplicate a name is rejected.
+- name: Element View in UI
+  description: >-
+    The Console's view of an element shows its name, description, the requirements and guardrails it
+    references, and its relationships — including, where the element has them, performs, exposes,
+    uses, calls, reads, modifies, owns, references, groups, produces, depends-on and consumes — so a
+    reader sees the whole element, not a subset. Every reference to another element — in a Function's
+    steps, in a Component's performs/owns/produces, in an Interface's exposes, in an Actor's uses, and
+    in the relationships list — is a navigable link that opens that element in the view; a referenced
+    Requirement or Guardrail opens its definition. A reference whose target is not stored yet is shown
+    but not navigable (a gap, not an error). A reference opens the element it names within the viewed
+    element's own System — through the element's own edges first — never a same-named element of another
+    System. Navigation keeps a history so the reader can step back. UUIDs are resolved to Element
+    names.
 
 Guardrail:
 - name: Follow Technology Radar
