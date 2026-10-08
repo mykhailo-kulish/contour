@@ -33,7 +33,7 @@ needs, then the code).
   refined as Actor → Interface → Function — the same rollup as principle 5.
   ```yaml
   Actor: Modeler
-    uses: [Find Specifications, View Element, Edit Element, …]
+    uses: [Search Specifications, View Function, Create or Modify Function, …]
     requirements: [Works In A Browser, Listings Are Paginated]
   ```
 - **Interfaces belong to the System, not to a Component.** An Interface names
@@ -54,72 +54,44 @@ needs, then the code).
 
 `engine/contour-engine.yaml` is the v0.5 model:
 
-- **System** Contour: 31 Functions (16 core, 15 Console), 5 Data Objects,
-  6 Events.
-- **Actors:** Modeler (uses the 15 Console Functions; *Works In A Browser*)
-  and AI Agent (uses 15 core Functions, Check Model among them; *Reaches The System As Tools*).
-- **Components:**
-  - **contour-engine** performs every Function and owns all data —
-    rationale: *One Core For Every Actor*, principle 4.
-  - **contour-engine-ui** performs the 15 Console Functions (View Element, Review Model,
-    Find Specifications, Edit Element, Remove Element, …), owns no data, and
-    hosts the Console — rationale: *Console Released Independently*,
-    *Works In A Browser*.
-- **Interfaces:**
-  - **Contour Console** serves the Modeler (Web UI) and exposes the Console
-    Functions, so it sits on contour-engine-ui.
-  - **Contour MCP Server** serves the AI Agent (MCP) and exposes core
-    Functions, so it sits on contour-engine.
-  - **Contour REST API** serves System (OpenAPI) and exposes exactly the 15
-    core Functions the Console Functions `use`, so it sits on contour-engine
-    — rationale: *Console Released Independently*.
+- **System** Contour: 34 Functions — 16 core, and a *View* and a *Create or
+  Modify* screen Function for each of the 9 element and definition types —
+  5 Data Objects, 6 Events.
+- **Actors:** Modeler (uses 24 Functions through the Console; *Works In A
+  Browser*) and AI Agent (uses the 15 core Functions exposed as tools;
+  *Reaches The System As Tools*).
+- **One Component, contour-engine,** performs every Function and owns all
+  data — rationale: *One Core For Every Actor*, principle 4, *Works In A
+  Browser*.
+- **Interfaces,** both on contour-engine:
+  - **Contour Console** serves the Modeler (Web UI, Material UI) and
+    exposes the screen Functions plus the read-only core ones a screen
+    shows directly (Check Model, the searches, the diagrams).
+  - **Contour MCP Server** serves the AI Agent (MCP) and exposes the core
+    Functions as tools.
 
-```mermaid
-graph LR
-    Modeler([Actor: Modeler])
-    Agent([Actor: AI Agent])
-    subgraph Contour [System: Contour]
-        subgraph UI [Component: contour-engine-ui]
-            Console(("Contour Console"))
-            UIFns["15 Console Functions<br/>View Element, Edit Element, …"]
-        end
-        subgraph Engine [Component: contour-engine]
-            REST(("Contour REST API"))
-            MCP(("Contour MCP Server"))
-            Fns["14 exposed Functions<br/>+ Validate Element"]
-            Data[(5 Data Objects)]
-        end
-    end
-    Modeler -->|uses| Console
-    Agent -->|uses| MCP
-    Console -->|exposes| UIFns
-    UIFns -->|uses| REST
-    REST -->|exposes| Fns
-    MCP -->|exposes| Fns
-    Fns -->|reads / modifies| Data
-```
+The screen Functions reach the core's writes with `calls`, inside the
+Component; browsing, pagination and navigation are conventions of the
+Console's binding, not Functions.
 
-The Console Functions have their own behavior — how a record is laid out,
-that a diagram is shown exactly as rendered, that a removal is confirmed —
-which is why they are Functions and not just a list of what the Console
-presents. Each one `uses: Contour REST API / <core Function>` and maps
-`Unreachable` to its own *Engine Unavailable*, so the dependency of the
-Console on the engine is visible in every step that crosses it.
-
-Function names are unique within a System, so four Console Functions that
-had the same names as core Functions were renamed for what the person does:
-*Find Specifications*, *Remove Element*, *Remove Requirement*,
-*Remove Guardrail*.
+**An earlier version split it.** For a while this model had a second
+Component, `contour-engine-ui`, whose Console Functions crossed to the
+engine through an internal *Contour REST API* serving `System`, each step
+mapping `Unreachable` — justified by a Requirement that the Console be
+released independently. With that Requirement gone, the split had no
+rationale, and the model went back to one Component. What the split would
+cost is shown, with the checker's output, in
+[`example/contour-example.md`](example/contour-example.md), Section 3.
 
 **The engine implements v0.5.** `Validate Element` rejects a write only for
 a contradiction decidable at element scope — never for a gap, under the
 Guardrail *Gaps Never Block A Write*, so a model can be built one element at
 a time from either end. `Check Model` is the model-scope counterpart of
-`contour-check.py`: contradictions and gaps in two lists, every gap with its
-top-down and bottom-up next step. The AI Agent uses it directly through the
-MCP Server; the Modeler through the Console's `Review Model`. Elements no
-longer carry a `componentId`: allocation is the `performs`, `owns` and
-`produces` relationships, and an Interface's Component is derived.
+`skills/contour-check.py`: contradictions and gaps in two lists, every gap
+with its top-down and bottom-up next step — to the AI Agent through the MCP
+Server, to the Modeler through the Console. Elements carry no
+`componentId`: allocation is the `performs`, `owns` and `produces`
+relationships, and an Interface's Component is derived.
 
 ## Completing a model in each direction
 
@@ -146,8 +118,9 @@ LLM applies them; the checker reports what's left.
    serving `System` and rewrite the step as `uses: <Interface> /
    <Function>`, deciding what `Unreachable` becomes. The redesign is a
    decision, not a mechanical rewrite, because the caller gains a failure it
-   didn't have. This is where the Contour REST API comes from: its exposes are
-   exactly the Functions the Console's steps cross to.
+   didn't have. In the earlier two-Component version of contour-engine, this
+   is where its internal REST API came from; with one Component, the
+   Console's `calls` stay inside it and no such Interface is needed.
 5. **Only what exists is referenced.** A step names a Function, Data Object,
    Event or Interface already in the model. A call into another System
    starts by modeling that System's Interface; top-down never writes a
@@ -215,14 +188,12 @@ Results on contour-engine:
 | Model state | Contradictions | Gaps |
 |---|---|---|
 | Complete (`engine/contour-engine.yaml`) | 0 | 0 |
-| Started top-down: no Components or Interfaces; Console Functions `call` core ones | 0 | 3 — A0, and N2 for each Actor |
-| Top-down, Components allocated, no Interfaces yet | 16 — A3, one per crossing `calls` (redesign due) | 2 — N2 for each Actor |
-| Started bottom-up: no `uses`, no rationale yet | 0 | 7 — N1 for each Actor, W1 for each Component and Interface |
-| A Data Object given a second owner | 8 | 0 |
-| The Console exposes a core Function (Retrieve Element) | 1 — A5 | 1 — N4 |
-| A `uses` step without `Unreachable` | 1 — R2 | 0 |
-| The REST API stops exposing a Function the Console uses | 1 — R2 | 0 |
-| A Console Function uses the MCP Server (serves AI Agent) | 1 — A6 | 0 |
+| Started top-down: no Component or Interfaces | 0 | 3 — A0, N2 |
+| Started bottom-up: no `uses`, no rationale yet | 0 | 5 — N1, W1 |
+| Screen Functions moved to their own Component (a split with no redesign) | 44 — A3, A5 | 0 |
+| A Data Object given a second owner | 19 — A1, A3 | 0 |
+| An MCP response map missing an outcome | 1 — R3 | 0 |
+| The AI Agent stops claiming a Function the MCP Server exposes | 0 | 1 — N4 |
 
 ## Interface
 
