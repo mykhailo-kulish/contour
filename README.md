@@ -97,20 +97,29 @@ skills/                     the checker and agent skills that apply Contour
   python3 skills/contour-check.py engine/contour-engine.yaml
   ```
 
-- [`skills/.kiro/skills/contour-reverse`](skills/.kiro/skills/contour-reverse/SKILL.md)
-  — an agent skill that reverse-engineers a Contour record from a
+Two agent skills and one hook, in two editions with the same
+instructions — one for **Kiro**, one for **Claude Code**:
+
+- **`contour-reverse`** — reverse-engineers a Contour record from a
   codebase (the bottom-up direction), writing it to a local YAML model
   or into a running contour-engine through its MCP tools.
-- [`skills/.kiro/skills/contour-verify`](skills/.kiro/skills/contour-verify/SKILL.md)
-  — an agent skill that verifies a codebase against an existing record:
+- **`contour-verify`** — verifies a codebase against an existing record:
   structure, behavior, and every referenced Requirement and Guardrail.
-- [`skills/.kiro/hooks/contour-autoload-spec.json`](skills/.kiro/hooks/contour-autoload-spec.json)
-  — a Kiro hook that loads `contour.md` into the agent's context when a
-  prompt asks to model or verify with Contour.
+- **autoload hook** — loads `contour.md` into the agent's context, once
+  per session, when a prompt asks to model or verify with Contour.
 
-The skills are written for Kiro; to use them, copy `skills/.kiro` into
-your workspace's `.kiro` folder. Their instructions are plain Markdown
-and work as a system prompt or skill in other agents too.
+| | Kiro | Claude Code |
+|---|---|---|
+| `contour-reverse` | [`skills/.kiro/skills/contour-reverse`](skills/.kiro/skills/contour-reverse/SKILL.md) | [`skills/.claude/skills/contour-reverse`](skills/.claude/skills/contour-reverse/SKILL.md) |
+| `contour-verify` | [`skills/.kiro/skills/contour-verify`](skills/.kiro/skills/contour-verify/SKILL.md) | [`skills/.claude/skills/contour-verify`](skills/.claude/skills/contour-verify/SKILL.md) |
+| autoload hook | [`skills/.kiro/hooks/contour-autoload-spec.json`](skills/.kiro/hooks/contour-autoload-spec.json) | [`skills/.claude/settings.json`](skills/.claude/settings.json) → [`hooks/contour-autoload-spec.py`](skills/.claude/hooks/contour-autoload-spec.py) |
+| install | copy `skills/.kiro` into the workspace's `.kiro` folder | copy `skills/.claude` into the project's `.claude` folder, merging `settings.json` if one exists |
+
+The Claude Code skills are the Kiro skills with the engine's MCP tool
+names in Claude Code's form (`mcp__contour-engine__…` instead of
+`mcp_contour_engine_…`). In Claude Code they run when a request matches
+their description, or directly as `/contour-reverse` and
+`/contour-verify`. Both hooks expect `contour.md` at the project root.
 
 ## Building contour-engine from the model
 
@@ -171,10 +180,13 @@ earlier version of this record, and what diverged between them.
 ## Connecting an agent to the engine
 
 A running contour-engine serves its MCP Server at
-`http://localhost:8000/mcp`. To give an agent its tools — which the
-`contour-reverse` and `contour-verify` skills use to read and write
-records — add this entry under `mcpServers` in the agent's MCP
-configuration (for Kiro, `.kiro/settings/mcp.json`):
+`http://localhost:8000/mcp`. The `contour-reverse` and `contour-verify`
+skills use its tools to read and write records; register it under the
+name `contour-engine`, which is the name the skills' tool references
+assume. Change the URL if the engine runs on another host or port.
+
+**Kiro** — add this entry under `mcpServers` in the workspace's MCP
+configuration (`.kiro/settings/mcp.json`):
 
 ```json
 "contour-engine": {
@@ -188,7 +200,30 @@ configuration (for Kiro, `.kiro/settings/mcp.json`):
 
 `mcp-remote` bridges the engine's streamable-HTTP endpoint to agents
 that launch MCP servers as local commands; it needs Node.js for `npx`.
-Change the URL if the engine runs on another host or port.
+
+**Claude Code** — connects to HTTP MCP servers directly, so no bridge
+is needed. Add it for the project from the command line:
+
+```
+claude mcp add --transport http --scope project contour-engine http://localhost:8000/mcp
+```
+
+or write the same into `.mcp.json` at the project root:
+
+```json
+{
+  "mcpServers": {
+    "contour-engine": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp"
+    }
+  }
+}
+```
+
+Claude Code asks for approval before first using a project-scoped
+server. Its tools then appear as `mcp__contour-engine__store_element`,
+`mcp__contour-engine__check_model` and so on.
 
 ## Status
 
