@@ -541,8 +541,9 @@ validates references against already-persisted state:
    unknown, that is the engine lagging the spec — flag it in the report (§8) and
    recommend the engine's record schema be extended, rather than discarding the
    detail.
-3. Retrieve/confirm with `retrieve_element`, `list_or_search_elements` (pass a
-   `q` for the search-specifications mode, or `type`/`systemId` to list),
+3. Retrieve/confirm with `retrieve_element`, `search_specifications` (pass a
+   `query` for free text, or only `elementType`/`systemId` to list; results
+   come a page at a time with a `total`),
    `retrieve_requirement`, `retrieve_guardrail`; render with `render_diagram` /
    `render_element_diagram` to sanity-check the shape.
 4. If a store is rejected, read the validation problem, fix the offending field

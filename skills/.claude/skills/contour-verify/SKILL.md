@@ -66,8 +66,9 @@ Determine the source and load it fully before touching code:
   functions/interfaces/dataObjects/events under their Component; top-level Actors
   and Requirement/Guardrail definitions) and resolve every inline name reference.
 - **MCP / contour-engine** (`--source mcp`): pull the model with
-  `mcp__contour-engine__list_or_search_elements` (list mode, optionally by
-  `type`/`systemId`), then `retrieve_element` for each element's full record, and
+  `mcp__contour-engine__search_specifications` (no `query` to list; filter by
+  `elementType`/`systemId`, and page through with `page`/`pageSize` until
+  `total` is reached), then `retrieve_element` for each element's full record, and
   `retrieve_requirement` / `retrieve_guardrail` (or the `search_*` tools) for
   every referenced definition. Use `render_diagram` / `render_element_diagram`
   to get the shape the engine considers authoritative.
