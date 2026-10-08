@@ -2,7 +2,7 @@
 
 ## Evidence log and roadmap for the Contour framework
 
-**Companion to [`contour.md`](contour.md)** (v0.3 and later) — the
+**Companion to [`contour.md`](../contour.md)** (v0.3 and later) — the
 framework paper holds the concept; this document holds the evidence for
 it and the plan for testing it further. It grows as experiments run,
 without requiring a new release of the paper.
