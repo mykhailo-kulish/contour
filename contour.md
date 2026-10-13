@@ -58,14 +58,16 @@ possibility — reconstructing an existing system's real prior behavior
 from its record alone — is left explicitly **optional** and untested;
 nothing else here depends on it.
 
-The framework works in two tiers. A compact **diagram** shows a system's
-shape at a glance; a **structured record** underneath each element
-carries the detail a diagram can't hold — behavior, schemas, contracts,
-ordered steps. Seven element types and nine relationship verbs, one
-vocabulary partitioned across two zoom levels (Section 3), and no
-separate vocabulary per level. The name says the same thing: a contour
-traces an outline at low resolution and leaves the interior to something
-else.
+The framework is a model, not a notation. Seven element types and nine
+relationship verbs, one vocabulary partitioned across two levels of
+detail (Section 3), and no separate vocabulary per level. A **structured
+record** under each element carries the detail the outline can't —
+behavior, schemas, contracts, ordered steps. Contour defines no
+diagram notation: pictures are generated views of the model, drawn by
+whatever tool the reader prefers, and Section 4 maps the model onto C4
+(LikeC4) and ArchiMate for that purpose. The name says the same thing: a
+contour traces an outline at low resolution and leaves the interior to
+something else.
 
 This is a personal working paper, not a finished standard. The goal is
 to pressure-test whether a model this small still says enough to guide a
@@ -78,14 +80,14 @@ change into code correctly.
 1. [Motivation](#1-motivation)
 2. [Design Principles](#2-design-principles)
 3. [Core Metamodel](#3-core-metamodel)
-   1. [Metamodel diagram](#31-metamodel-diagram)
+   1. [Relations by level](#31-relations-by-level)
    2. [Two Levels of Detail: Context View and Functionality View](#32-two-levels-of-detail-context-view-and-functionality-view)
    3. [The Structured Record](#33-the-structured-record)
    4. [Event-Driven Causal Chains](#34-event-driven-causal-chains)
    5. [Naming Conventions](#35-naming-conventions)
    6. [Requirements and Guardrails](#36-requirements-and-guardrails)
    7. [One Model, Two Directions](#37-one-model-two-directions)
-4. [Notation](#4-notation)
+4. [Interoperability](#4-interoperability)
 5. [Worked Example](#5-worked-example)
 6. [Limitations and Open Questions](#6-limitations-and-open-questions)
 7. [Conclusion](#7-conclusion)
@@ -132,8 +134,8 @@ response, or simply making a change safely. Ordinary prose
 documentation, and most diagram notations, fall short of that bar: they
 describe *shape*, not enough to guide *change* correctly.
 
-Contour aims at the middle ground on both problems at once: a notation
-small enough to use consistently without a tool-enforced palette, but
+Contour aims at the middle ground on both problems at once: a model
+small enough to use consistently, but
 structured enough — down to the level of individual Function behavior,
 Data Object schemas, and the Interfaces external Functions are offered
 through — to be captured as data
@@ -159,16 +161,15 @@ Contour elements. Lowercase "system" is the ordinary word.
    what the System does, not how it is split. A System
    of one Component is normal; a System of several is common. Neither
    boundary is a size limit — a Component can be a small
-   service or a large monolith, so long as it shares one lifecycle. Each
-   one-page diagram centres on one System: everything else is either
-   something it contains or something in its environment. The one-page constraint
-   governs the diagram, not the real size of what it depicts or the
-   record beneath it.
+   service or a large monolith, so long as it shares one lifecycle. A model
+   centres on one System: everything else is either something it contains
+   or something in its environment.
 
-2. **A small, fixed vocabulary.** Seven element types, on the diagram,
-   and no more — a fixed vocabulary is easier to apply consistently than
-   an extensible one. The record tier may still name things that are never
-   drawn. Where a concept can be *derived* rather than declared, it is:
+2. **A small, fixed vocabulary.** Seven element types and no more — a
+   fixed vocabulary is easier to apply consistently than an extensible
+   one. The record may still name things that are not elements
+   (Requirements and Guardrails, Section 3.6). Where a concept can be
+   *derived* rather than declared, it is:
    a Function has no separate "service" or "interface" counterpart; it is
    externally accessible exactly when an Interface
    exposes it, and private otherwise. Likewise an Interface declares no
@@ -203,18 +204,19 @@ Contour elements. Lowercase "system" is the ordinary word.
    The coarser level always summarizes the finer one — a `depends-on`
    edge stands for a `uses` edge to an external Function underneath it — so detail is
    drilled into when needed, never duplicated. A System is a *grouping*
-   drawn around Components in the Context view, not a third zoom level:
-   it changes what the boundary encloses, not how deep the diagram goes.
+   of Components at the Context level, not a third level: it changes what
+   the boundary encloses, not how deep the model goes.
 
-6. **The diagram summarizes; the record holds the truth.** Each element
-   has a shape on the diagram and a structured record underneath it. The
-   diagram is what gets read first and stays deliberately small; the
-   record is where completeness lives — descriptions, schemas, a
-   Function's steps and the ways it can end, an Interface's exchanges. When the two disagree, the
-   record is authoritative.
+6. **The summary is derived; the record holds the truth.** Each element
+   has a structured record: descriptions, schemas, a Function's steps
+   and the ways it can end, an Interface's exchanges. The Context-level
+   edges and any picture of the model are summaries derived from that
+   record, never a second place to maintain it. When a summary and the
+   record disagree, the record is authoritative.
 
 7. **Written for three audiences at once.** A non-developer must be able
-   to read the diagram unaided and describe a needed change in business
+   to read the model — the names, descriptions and a generated view of it
+   (Section 4) — unaided and describe a needed change in business
    language; a developer must be able to turn that into a safe change; an
    LLM must find the record unambiguous enough to do the same. This is
    why names are plain language and Functions are named for the work they
@@ -252,7 +254,7 @@ Contour defines **seven element types**:
 |---|---------|---------|
 | 1 | **System** | The business-level application a stakeholder would name — "Order Management", "Payments". It exists to serve its Actors: what it offers them is its Functions, reached through its Interfaces. A System groups the Components that implement it and performs no work of its own: everything a System does, one of its Components does. A System may contain a single Component, often contains several — and, in a model begun top-down, may not be split into Components yet |
 | 2 | **Component** | The implementation of part of a System, with one lifecycle: whatever is built, versioned, released, and retired as a whole, usually by one owning team. It groups the Functions it performs and the Data Objects it owns because they belong together — they change together, are maintained by the same team, or must be available together. The consequence is that it deploys as one artifact — a single service, or a monolith, however large. Anything with more than one lifecycle is modeled as more than one Component, tied together by `depends-on`. Which Component performs a Function is an allocation decision: moving it changes `performs`, not the Function's record. This is the unit most modeling happens at |
-| 3 | **Function** | A capability the Component performs — internal or external. It is externally accessible when one of its Component's Interfaces exposes it, and private otherwise. A Function is described in business terms only — what it does and how it can end; how it is reached is its Interfaces' concern. A Function can consume and react to an Event, produce an Event, call another Function in the same Component, or use another Component's external Function. It is the minimal unit of Component behavior — but not smaller than an actual piece of business-related work: `Calculate Total` is a Function; `Parse Input` is an implementation step inside one, and belongs in that Function's `steps`/`behavior` record (Section 3.3), not on the diagram |
+| 3 | **Function** | A capability the Component performs — internal or external. It is externally accessible when one of its Component's Interfaces exposes it, and private otherwise. A Function is described in business terms only — what it does and how it can end; how it is reached is its Interfaces' concern. A Function can consume and react to an Event, produce an Event, call another Function in the same Component, or use another Component's external Function. It is the minimal unit of Component behavior — but not smaller than an actual piece of business-related work: `Calculate Total` is a Function; `Parse Input` is an implementation step inside one, and belongs in that Function's `steps`/`behavior` record (Section 3.3), not an element of the model |
 | 4 | **Interface** | A channel through which one caller reaches Functions the System offers. It belongs to the System, **serves** exactly one caller — an Actor, or the keyword `System` for this System's own Components — carries the technology in its `binding`, and **exposes** a set of Functions, with what the caller sends and gets back for each (Section 3.3). It declares no Component: it sits on the one that performs what it exposes |
 | 5 | **Event** | A notification to the environment that a Component's state has changed — "Payment Completed", "Order Placed". An Event reports something that has already happened, which is why Event names are written in the past tense (Section 3.5) |
 | 6 | **Data Object** | A named piece of information the Component owns and keeps. Data that only travels across a boundary — a request, a response — is not a Data Object; it is described inline in the Interface where it crosses (Section 3.3) |
@@ -265,15 +267,15 @@ and **nine relationship types** (three of which pair an inverse verb — `produc
 | **groups** | System → Component | This Component is one of those implementing the System. A Component belongs to exactly one System |
 | **performs** | Component → Function | This Component implements this Function — an allocation of the System's work to one lifecycle unit |
 | **exposes** | Interface → Function | The Interface makes this Function reachable to the caller it serves. A Function no Interface exposes is private. An Interface exposes only Functions one Component performs — which is how its Component is derived |
-| **uses** | Actor → Function, or Function → Function, through an Interface | An Actor uses the System's Functions; its record lists them, and once an Interface serving it exists, the edge is drawn Actor → Interface — the same rollup as principle 5. This is the only direction an Actor takes part in. A Function of *another* Component of the same System reaches a Function through an Interface that serves `System`; a Function reaching *another System* goes through that System's Interface, which serves this System as its Actor. Either way the step names both, as `Interface / Function`. A Function never `uses` a Function of its own Component; inside a Component the relation is `calls` |
+| **uses** | Actor → Function, or Function → Function, through an Interface | An Actor uses the System's Functions; its record lists them, and once an Interface serving it exists, the edge runs Actor → Interface — the same rollup as principle 5. This is the only direction an Actor takes part in. A Function of *another* Component of the same System reaches a Function through an Interface that serves `System`; a Function reaching *another System* goes through that System's Interface, which serves this System as its Actor. Either way the step names both, as `Interface / Function`. A Function never `uses` a Function of its own Component; inside a Component the relation is `calls` |
 | **calls** | Function → Function | One Function invokes another *within the same Component* — or within a System not yet split into Components — with no Interface in between. An allocation that would put caller and callee in different Components contradicts the edge: that is a redesign — one Component, or an Interface and a `uses` step — never a silent rewrite (Section 3.7). Order is not part of this edge — see the note below |
 | **produces / consumes** | Component → Event, or Function → Event | At Component level, a Context-view summary: the component raises or reacts to this event. At Function level, the precise cause: which specific Function produces it, or reacts to it — see Section 3.4 |
 | **reads / modifies** | Function → Data Object | A Function's actual read or write access to a Data Object owned by its *own* Component — principle 4 at Function-level precision. A Function in another Component can only reach that data through an Event it consumes or an external Function it uses |
 | **owns / references** | Component → Data Object | `owns`: this Component is the Data Object's single home. `references`: a Context-view summary that this Component obtains the Data Object *from its owner* — through one of the owner's external Functions or an Event it produces. It is never direct access; the Functionality-view chain underneath it is a `uses` edge to an external Function that `reads` it, or a `consumes` edge on an Event that carries it. A `references` edge that rests on a `uses` edge implies a `depends-on` edge to the owner |
-| **depends-on** | Component → Component | A directed dependency, drawn at Context-view resolution, summarizing one or more `uses` edges from its Functions to the other Component's external Functions — see Section 3.2. Consuming another Component's Event does *not* create a `depends-on` edge: the Event is the coupling, and it is drawn as such |
+| **depends-on** | Component → Component | A directed dependency, stated at Context-view resolution, summarizing one or more `uses` edges from its Functions to the other Component's external Functions — see Section 3.2. Consuming another Component's Event does *not* create a `depends-on` edge: the Event is the coupling, and it is stated as such |
 
-That's the entire metamodel. Everything on a Contour diagram is one of
-these seven boxes connected by one of these nine relations.
+That's the entire metamodel. Everything in a Contour model is one of
+these seven element types connected by one of these nine relations.
 
 **Why `calls` is separate from `uses`:** `uses` always crosses into a
 Component through an Interface — with a binding and a shape. `calls` is a
@@ -286,118 +288,71 @@ hand-off, and the mechanism, if it matters, goes in the calling Function's
 `behavior`.
 
 **Ordering is not part of the `calls` edge itself.** If `Place Order`
-calls `Validate Order` before `Calculate Total`, the `calls` edges on
-the diagram don't show that sequence; the relationship stays a plain,
+calls `Validate Order` before `Calculate Total`, the `calls` edges
+don't show that sequence; the relationship stays a plain,
 unordered edge, the same way `modifies` stays a plain edge rather than a
 state transition (Section 3.4). Sequence lives in the calling Function's
-`steps` list (Section 3.3); the diagram's edges are a derived summary of
+`steps` list (Section 3.3); the edges are a derived summary of
 that list, not the authoritative source of order.
 
-### 3.1 Metamodel diagram
+### 3.1 Relations by level
 
-Context-view relations (Component-level):
+Each relation belongs to one of two levels of detail (principle 5).
+`produces`/`consumes` and `uses` exist at both — a Component-level edge
+summarizing the Function-level ones beneath it; the other seven belong
+to one level each.
 
-```mermaid
-graph TD
-    Y[System] -.->|groups| Sys(Component)
-    A([Actor]) -->|uses| I((Interface, on the Component))
-    Sys -->|produces / consumes| E{{Event}}
-    Sys -->|owns| D[(Data Object)]
-    Other(Other Component) -->|references| D
-    Sys -->|depends-on| Other
-```
-
-Functionality-view relations (Function-level), which the Context-view
-relations above summarize (principle 5):
-
-```mermaid
-graph TD
-    Sys(Component) -->|performs| F[Function, external]:::ext
-    I((Interface)) -->|exposes| F
-    A([Actor]) -->|uses| I
-    F2[Function, other Component] -->|uses · Interface| F
-    F -->|calls| F3[Function, same Component]
-    F -->|produces / consumes| E{{Event}}
-    F -->|reads / modifies| D[(Data Object, same Component)]
-    classDef ext stroke-width:3px
-```
-
-`produces`/`consumes` and `uses` appear at both levels — a
-Component-level edge summarizing the Function-level ones beneath it; the
-other seven belong to one view each. The heavy border marks an external
-Function — one at least one Interface exposes (Section 4).
+| Level | Relations |
+|---|---|
+| **Context** (Component-level) | `groups`, `depends-on`, `owns`, `references`; `produces`/`consumes` from a Component; `uses` from an Actor to an Interface |
+| **Functionality** (Function-level) | `performs`, `exposes`, `calls`, `reads`/`modifies`; `produces`/`consumes` from a Function; `uses` from a Function, through an Interface, to an external Function |
 
 ### 3.2 Two Levels of Detail: Context View and Functionality View
 
-Contour can be drawn at two resolutions of the same model, chosen per
-diagram rather than fixed for the whole framework:
+The model has two levels of detail, and a view of it can be taken at
+either, chosen per view rather than fixed for the whole framework:
 
-- **Context view** — boxes are Components; the primitive relation is
-  `depends-on` (Component → Component). This is the fast, whiteboard-friendly
-  view: "what does this landscape look like." It is complete and valid
-  on its own — you don't have to model Functions to draw it.
-- **Functionality view** — boxes are Functions; the primitive relation
-  is `uses` (Function → external Function of another Component). This is
-  the precise, drill-down view: "*why*, specifically, does Component A
-  depend on Component B?" Answer: because one of A's Functions `uses` one
-  of B's external Functions, through one of B's Interfaces that serves
-  this caller — `System` inside one System, the calling System by name
-  across two.
-
-```mermaid
-graph LR
-    subgraph "Context view"
-        SA(Component A) -->|depends-on| SB(Component B)
-    end
-```
-
-```mermaid
-graph LR
-    subgraph "Functionality view (drill-down of the same edge)"
-        FA[Function: A performs] -->|uses| IB(("Interface of B"))
-        IB -->|exposes| FB[Function: B performs]:::ext
-    end
-    classDef ext stroke-width:3px
-```
+- **Context view** — the elements are Components; the primitive relation
+  is `depends-on` (Component → Component). This is the fast,
+  whiteboard-friendly view: "what does this landscape look like." It is
+  complete and valid on its own — you don't have to model Functions to
+  state it.
+- **Functionality view** — the elements are Functions; the primitive
+  relation is `uses` (Function → external Function of another
+  Component). This is the precise, drill-down view: "*why*, specifically,
+  does Component A depend on Component B?" Answer: because one of A's
+  Functions `uses` one of B's external Functions, through one of B's
+  Interfaces that serves this caller — `System` inside one System, the
+  calling System by name across two.
 
 The two views describe the same territory at different resolutions. Once
 the Functionality view exists, every Context-level `depends-on` edge
 should be *explainable* by a `uses` chain underneath it — "soft
 consistency," expected but not enforced (Section 6).
 
-**The default one-page diagram combines the two.** In practice, and in
-every diagram in this paper, the one-page diagram draws the focal
-System *opened* — its Components with their Interfaces on their
-boundaries, its Functions with external ones marked, the Data Objects
-each Component owns, the Events it produces — and every neighbouring
-System *half-open*: closed, except for the Interfaces and Functions
-that take part in a `uses` edge with the focal System, which are drawn
-on the neighbour's boundary. The same half-open view exists in the
-record tier, as the model's `Neighbour` block (Section 3.7). Actors
-`use` the focal System's Interfaces. To keep the page small, which Interfaces expose a
-Function is shown as a label on the Function rather than as `exposes`
-edges, and a cross-Component call is drawn Function to Function with the
-Interface it goes through as the edge's label. Every cross-Component call
-is therefore visible, and precise to the Function, on the one page; a
-`depends-on` edge is drawn only for a neighbour whose Functions aren't
-shown, and a drill-down draws the full path, caller → Interface →
-Function. That is
-the Context view of the landscape and the Functionality view of one
-Component on one page; the rest of a neighbour's Functionality view is a
-separate drill-down.
+**A neighbouring System is half-open.** The focal System is modeled in
+full — its Components, their Interfaces and Functions, the Data Objects
+each Component owns, the Events it produces. A neighbouring System is
+modeled only as far as it meets the focal one: the Interfaces and
+Functions that take part in a `uses` edge with it. The record tier holds
+this as the model's `Neighbour` block (Section 3.7). Actors `use` the
+focal System's Interfaces. Every cross-Component call is therefore
+precise to the Function, and names the Interface it goes through; a
+`depends-on` edge stands alone only for a neighbour whose Functions
+aren't modeled.
 
-**A trace view is generated, never drawn.** Following one Function's
+**A trace view is generated, never authored.** Following one Function's
 `steps` across Components — through each `calls` and `uses`, branching
 at every `becomes` mapping (Section 3.3) — yields every path the Function can
 take and the ending each path reaches, with the response a caller gets
 for it from the Interface it was reached through. It needs no data beyond the
-records, so it is a view, not a diagram to maintain; Section 5 shows
+records, so it is a view to generate, not something to maintain; Section 5 shows
 one.
 
 ### 3.3 The Structured Record
 
-The diagram answers "what exists and how does it connect." It
-deliberately does not answer "what would I need to know to build this,
+The elements and relations answer "what exists and how does it connect."
+They deliberately do not answer "what would I need to know to build this,
 or to change it correctly." That second question is answered by a
 structured record attached to each element — built from a small, shared
 set of possible fields, rather than each of the seven inventing its own
@@ -507,10 +462,10 @@ no new relationship type:
 | `reads` / `modifies` | a Data Object of the same Component | |
 | `produces` | an Event of the same Component | |
 
-What `steps` changes is which side is authoritative: the diagram's edges
+What `steps` changes is which side is authoritative: the edges
 for those verbs are a **derived, unordered summary** of the steps — the
 same rollup as principle 5 (Context summarizes Functionality), applied
-one level further down (record summarizes into diagram).
+one level further down (the record summarizes into the edges).
 
 **`becomes`: when a called Function's ending changes this one's.** A
 `calls` or `uses` step may map the callee's endings onto the caller's
@@ -595,9 +550,9 @@ the notation; it is defined by the binding (below).
 #### Interfaces
 
 An **Interface** is a channel through which one caller reaches
-Functions the System offers. It is an element in its own right — drawn
-on the boundary of the Component that performs what it exposes
-(Section 4) — and its record answers three questions:
+Functions the System offers. It is an element in its own right — it sits on the
+Component that performs what it exposes — and its record answers three
+questions:
 
 - **Who is it for?** — **`serves`** names exactly one caller: an Actor,
   or the reserved word `System`, which stands for this System's own
@@ -802,7 +757,7 @@ file and exits non-zero only on contradictions.
 
 ### 3.4 Event-Driven Causal Chains
 
-Section 3.2 showed `depends-on` as a Context-view summary of a
+Section 3.2 described `depends-on` as a Context-view summary of a
 Function-level `uses` edge to an external Function. The same rollup applies to
 Events (principle 5): a Component-level `produces`/`consumes` edge is a
 summary; the precise cause is a specific Function consuming an Event,
@@ -847,17 +802,9 @@ without having changed anything is usually a sign the Event is really
 reporting an activity rather than an outcome — worth re-checking
 against the past-tense test in Section 3.5.
 
-For readability, a causal chain reads left to right, event first — the
-passive form of the relation (`consumed by` instead of `consumes`; same
-edge, same direction, just the natural order for narrating "this
-happens, which triggers that"):
-
-```mermaid
-graph LR
-    OrderPlaced{{Event: Order Placed}} -->|consumed by| ReserveStock[Function: Reserve Stock]
-    ReserveStock -->|modifies| Stock[(Data Object: Stock)]
-    ReserveStock -->|produces| StockReserved{{Event: Stock Reserved}}
-```
+A causal chain reads event first — the passive form of the relation
+(`consumed by` instead of `consumes`; same edge, same direction, just
+the natural order for narrating "this happens, which triggers that").
 
 `modifies` is deliberately a plain edge, not a state machine: it says
 *that* `Reserve Stock` changes `Stock`, not which field or which
@@ -865,13 +812,13 @@ state transition. A Data Object's structured record (Section 3.3) may
 optionally describe states and transitions — the worked `Order` schema
 already sketches a `status` enum — but the core metamodel stays at the
 "this Function touches this Data Object" level, consistent with a small
-diagram vocabulary (principle 2) and precision in the record (principle
+vocabulary (principle 2) and precision in the record (principle
 6) rather than in the relationship itself.
 
 ### 3.5 Naming Conventions
 
-Because the diagram tier is meant to be legible to a wide audience — not
-only engineers — Contour treats naming as part of the metamodel, not a
+Because names are what a wide audience — not only engineers —
+reads first, Contour treats naming as part of the metamodel, not a
 stylistic afterthought:
 
 - **Plain language, for a wide audience.** Names describe things the way
@@ -879,7 +826,7 @@ stylistic afterthought:
   would. "Reserve Stock" reads as work being done; `InventoryUpdateHandler`
   or `calcTotalV2` reads as code. Class names, method names, and other
   implementation detail belong in the element's `description` or
-  `behavior` (Section 3.3), never in the name shown on the diagram.
+  `behavior` (Section 3.3), never in the element's name.
 - **Functions are named for the work, not the mechanism.** A Function
   name states what actually gets done — an action plus the thing it
   acts on ("Reserve Stock", "Validate Order", "Calculate Total") — not
@@ -921,7 +868,7 @@ stylistic afterthought:
 Two kinds of statement don't belong inside any single element's
 `description` or `behavior`: what an element must *achieve*, and where
 its implementation must *stop*. Contour names both, as record-tier
-concepts rather than diagram elements:
+concepts rather than elements of the model:
 
 - A **Requirement** states something an element must address — a
   business rule, a technical or operational target, a regulatory
@@ -940,7 +887,7 @@ the drift a model is supposed to prevent.
 
 Both are named, defined once, and *referenced* by the elements they
 apply to — the same way a `schema` field can point at an external spec
-instead of restating it inline. Neither is ever drawn, so principle 2's
+instead of restating it inline. Neither is an element, so principle 2's
 count of seven elements and nine relations is untouched. Either may be
 referenced from **any** element: an Interface can carry a boundary about
 what must never be returned through it, a Data Object one about where it may be
@@ -1110,108 +1057,79 @@ both runs on the worked example.
 
 ---
 
-## 4. Notation
+## 4. Interoperability
 
-Contour uses seven simple shapes so a diagram can be drawn by hand and still
-be recognizable. The element and relationship set is normative; the
-shapes are the recommended rendering, and a tool may substitute its own
-so long as the seven stay distinguishable:
+Contour defines no diagram notation. A picture of a model is a *generated
+view* of it (Sections 3.2 and 5), drawn by a tool the reader already has;
+established standards do rendering and tooling better than a personal
+working paper can, so the framework maps onto them instead of
+competing with them. The model remains the authority (principle 6):
+exports are one-way and lossy, and nothing is edited in the target and
+carried back.
 
-- **System** — dashed boundary drawn around the Components it groups,
-  labeled at the edge. A grouping, not a box that performs work — which
-  is why its border is dashed and the Components inside keep their own
-  solid ones
-- **Component** — rounded rectangle, bold border
-- **Interface** — small labeled circle on the Component's boundary
-  (borrowed from UML's provided-interface notation): the point through
-  which a caller enters
-- **Function** — plain rectangle, nested inside the Component box. An
-  external Function — one that an Interface exposes — has a heavy
-  border and sits on the Component's edge; a private one has a normal
-  border and sits fully inside
-- **Event** — hexagon
-- **Data Object** — cylinder (borrowed shorthand for "a store of data,"
-  used purely as a pictogram — not implying a database)
-- **Actor** — stick figure when drawn by hand; a stadium (capsule)
-  shape in tools that have no stick figure, placed outside the
-  Component boundary. Not a circle: that shape belongs to Interface
+The mapping below is a **proposal**, to be checked against the target's
+own rules (in particular ArchiMate's relationship tables) before an
+exporter relies on it.
 
-Relationships are drawn as directed arrows, labeled with the relationship
-verb (`performs`, `exposes`, `uses`, `produces`, `owns`, `depends-on`,
-etc.) so the diagram is readable without a legend. Drawing a Function
-inside its Component's boundary may stand in for the `performs` edge.
+| Contour | C4 / LikeC4 | ArchiMate |
+|---|---|---|
+| System | Software System | Application Component, composed of its Components |
+| Component | Container (Appendix) | Application Component |
+| Function, external | no element — the label on a relationship (or a LikeC4 `component`, opt-in) | Application Service, realized by an Application Function |
+| Function, private | no element | Application Function |
+| Interface | the relationship's technology and label (or a custom LikeC4 element kind) | Application Interface, serving its one caller |
+| Event | no element — a Dynamic view step (or a custom element kind) | Application Event |
+| Data Object | no element — a datastore Container, or a custom kind | Data Object |
+| Actor, person or role | Person | Business Actor or Business Role |
+| Actor, another System | external Software System | Application Component |
 
-Two condensations keep the one-page diagram small, and a drill-down
-spells out what they condense:
+| Contour relation | C4 / LikeC4 | ArchiMate |
+|---|---|---|
+| `groups`, `performs` | nesting | composition, assignment |
+| `exposes` | omitted — carried by the Interface | assignment (Interface → Service) |
+| `uses`, `depends-on` | relationship, labeled with the Interface | serving |
+| `calls` | omitted — inside one Container | triggering or flow |
+| `produces`, `consumes` | relationship, labeled with the Event | triggering |
+| `reads`, `modifies` | omitted | access (read, write) |
+| `owns`, `references` | omitted, or a relationship to the datastore | association |
 
-- **`exposes` as labels.** On the one-page diagram, an external Function
-  carries the names of the Interfaces that expose it after its own
-  (`Fetch Order · Customer API, Order gRPC`) instead of an `exposes` edge
-  from each. A drill-down draws the edges.
-- **Cross-Component `uses` lands on the Function.** A call from a
-  Function of one Component to a Function of another is drawn Function
-  to Function, labeled with the Interface it goes through
-  (`uses · Inventory gRPC`), so the edge is precise to the Function
-  called and still names the channel. A drill-down draws the full path:
-  caller → Interface → `exposes` → Function.
+LikeC4 is the recommended first target. Its text-based model, custom
+element and relationship kinds, and generated views let the Context view
+be exported as a default view per System, with Functionality-level
+detail on request. ArchiMate is the target for readers already working
+in it, through its exchange format.
 
-An Actor's `uses` edge always ends at an Interface. A neighbouring
-System is drawn half-open (Section 3.2): the Interfaces and Functions
-that take part in a `uses` edge with the focal System sit on its
-boundary.
-
-Every diagram in this paper follows these shapes, so Sections 3.1 and 5
-double as a notation reference.
+**What an export loses.** Whatever the target has no place for: an
+Interface serving exactly one caller, Functions that are business-only,
+`steps`, results and alternatives, Requirements and Guardrails, the
+distinction between a contradiction and a gap, and the half-open
+neighbour. An export is a picture of the structure, not a substitute
+for the record.
 
 ---
 
 ## 5. Worked Example
 
-The **Order Management** System in an e-commerce context, drawn as the
-default one-page diagram of Section 3.2 — the System opened, its
-neighbour half-open. The complete model is
+The **Order Management** System in an e-commerce context, modeled with
+the System opened and its neighbour half-open (Section 3.2). The complete
+model is
 [`example/order-management.yaml`](example/order-management.yaml); its records, the
 Billing System on the other side of `Order gRPC`, and a larger System
 split into two Components are walked through in the companion
 [`example/contour-example.md`](example/contour-example.md).
 
-```mermaid
-graph LR
-    Customer([Actor: Customer])
-    Staff([Actor: Support Staff])
-    Billing([Actor: Billing])
+| Actor | Interface | Exposes | Component |
+|---|---|---|---|
+| Customer | Customer API | `Place Order`, `Fetch Order`, `Cancel Own Order` | `order-service` |
+| Support Staff | Operations API | `Fetch Order`, `Cancel Order for Customer` | `order-service` |
+| Billing (another System) | Order gRPC | `Fetch Order` | `order-service` |
 
-    subgraph OM [System: Order Management]
-        subgraph OrderSvc [Component: order-service]
-            CustAPI(("Customer API"))
-            OpsAPI(("Operations API"))
-            GrpcAPI(("Order gRPC"))
-            PlaceOrder["Function: Place Order<br/>· Customer API"]:::ext
-            FetchOrder["Function: Fetch Order<br/>· Customer API, Operations API, Order gRPC"]:::ext
-            CancelOwn["Function: Cancel Own Order<br/>· Customer API"]:::ext
-            CancelFor["Function: Cancel Order for Customer<br/>· Operations API"]:::ext
-            ValidateOrder[Function: Validate Order]
-            CalcTotal[Function: Calculate Total]
-            OrderData[(Data Object: Order)]
-        end
-    end
-
-    subgraph Inventory [System: Inventory]
-        InvGrpc(("Inventory gRPC"))
-        CheckStock["Function: Check Stock"]:::ext
-    end
-
-    Customer -->|uses| CustAPI
-    Staff -->|uses| OpsAPI
-    Billing -->|uses| GrpcAPI
-    PlaceOrder -->|calls| ValidateOrder
-    PlaceOrder -->|calls| CalcTotal
-    ValidateOrder -->|uses · Inventory gRPC| CheckStock
-    OrderSvc -->|produces| OrderPlaced{{Event: Order Placed}}
-    OrderSvc -->|produces| OrderCancelled{{Event: Order Cancelled}}
-
-    classDef ext stroke-width:3px
-```
+Beyond the table: `order-service` also performs the private Functions
+`Validate Order` and `Calculate Total` (`Place Order` `calls` both),
+owns the Data Object `Order`, and produces the Events `Order Placed` and
+`Order Cancelled`. The neighbour **Inventory** appears half-open: only
+its Interface `Inventory gRPC` and the Function `Check Stock` it
+exposes, which `Validate Order` `uses`.
 
 Order Management serves three Actors, each through one Interface
 exposing exactly what that Actor `uses`: the **Customer** through the
@@ -1228,7 +1146,7 @@ Actor here — `Validate Order` uses its Interface, and in Inventory's
 model Order Management is the Actor. Deployment nodes, infrastructure,
 and organizational elements are absent by design (principle 5).
 
-The records behind the diagram are the ones already shown: `Place
+The records behind the model are the ones already shown: `Place
 Order`, `Validate Order`, `Calculate Total`, `Order`, and the
 Customer API and Order gRPC Interfaces in Section 3.3; the Inventory
 `Neighbour` block in Section 3.7; `All Or Nothing` in Section 3.6.
@@ -1236,21 +1154,25 @@ Customer API and Order gRPC Interfaces in Section 3.3; the Inventory
 **Tracing Place Order.** The trace view of Section 3.2, generated from
 these records for the Customer API:
 
-```mermaid
-graph LR
-    PO[Place Order] -->|calls| VO[Validate Order]
-    VO -->|"uses · Inventory gRPC"| CS[Check Stock]
-    CS -->|Available| CT[Calculate Total]
-    CT --> M[modifies Order] --> P[produces Order Placed] --> OK(["Placed · 201"])
-    CS -->|Short| OOS(["Out Of Stock · 409"])
-    CS -->|Unreachable| SU(["Stock Unavailable · 503"])
-    PO -.->|"total under $1.00<br/>(All Or Nothing)"| BM(["Below Minimum · 422"])
+```
+Place Order (via Customer API)
+  calls Validate Order
+    uses Inventory gRPC / Check Stock
+      Available    -> continue
+      Short        -> Validate Order "Short" -> Place Order "Out Of Stock" · 409
+      Unreachable  -> "Stock Unavailable" · 503
+  calls Calculate Total
+  modifies Order
+  produces Order Placed
+  ends "Placed" · 201
+Exit from Place Order as a whole:
+  total under $1.00 (guardrail All Or Nothing) -> "Below Minimum" · 422
 ```
 
 Endings reached through `becomes` sit at a fixed point on the path — a
 shortage reported by `Check Stock` becomes `Validate Order`'s *Short*,
 which becomes `Place Order`'s *Out Of Stock* and a 409. `Place Order`'s
-own alternative, `Below Minimum`, is drawn as an exit from the Function
+own alternative, `Below Minimum`, is an exit from the Function
 as a whole, its position governed by the guardrail.
 
 **The same model, started from either end.** The checker's findings on
@@ -1307,7 +1229,7 @@ the evidence in [`contour-experiments.md`](experiments/contour-experiments.md)
   Interfaces must follow the same steps and reach the same outcomes for
   every caller; only what each caller sends and sees may differ (Section
   3.3). A capability whose rules differ per caller becomes several
-  Functions, which a business reader may find redundant on the diagram,
+  Functions, which a business reader may find redundant,
   and naming them well takes effort. The rule is also easy to break
   silently: a modeler can expose a Function through several Interfaces and hide
   per-caller rules in `behavior` prose ("if the caller is staff…").
@@ -1434,8 +1356,8 @@ shares, and the interfaces it offers and depends on — be described
 precisely enough, and readably enough for a non-developer, that a
 specific described change can be propagated into existing code
 correctly, or a new Component built correctly from the record as a spec?
-The framework keeps its diagram small on purpose (seven elements, two
-zoom levels, one page per diagram) and pushes the completeness that
+The framework keeps its model small on purpose (seven elements, two
+levels of detail, no notation of its own) and pushes the completeness that
 guiding a change correctly demands into a structured record underneath
 each element. Three preliminary experiments (documented in
 [`contour-experiments.md`](experiments/contour-experiments.md)), one of them on a
@@ -1468,19 +1390,19 @@ from its record alone comes after.
 ## Appendix: Comparison to ArchiMate and C4
 
 Contour is a deliberate subset-and-simplification, not a derivative of
-either:
+either; Section 4 gives the mapping onto both:
 
 | Aspect | ArchiMate | C4 | Contour |
 |---|---|---|---|
 | Element count | 50+ across 3 layers | ~8 (across diagram types) | 7, single layer |
-| Notation | Standardized shapes & colors (Open Group spec) | Boxes + arrows, informal | Generic geometric shapes, no reserved iconography |
+| Notation | Standardized shapes & colors (Open Group spec) | Boxes + arrows, informal | None — a model, not a notation; views are generated or exported (Section 4) |
 | Scope | Whole enterprise (business, application, technology, motivation) | One software system's structure | One Component and its immediate environment |
 | Zoom levels | Layers (business/application/technology) | Separate diagram types (Context, Container, Component, Code, Dynamic) | Two views of one model (Context, Functionality) — Section 3.2 |
 | Relationships | 10+ formal types with precise semantics | Informal, unlabeled by convention | 9 relationship types, one vocabulary partitioned across both views |
 | Service concept | A dedicated element (Business/Application Service, separate from Process/Function) | Not modeled explicitly | No separate type — a Function that an Interface exposes |
 | Interface concept | A dedicated element (Application Interface) | Implicit in relationship labels ("JSON/HTTPS") | A System-level element that serves one caller, exposes Functions, carries all technical detail in its `binding`, and sits on the Component that performs what it exposes |
 | Sequence/ordering | Not a core concern | Dynamic diagram (separate, numbered arrows) | `steps`, `result` and `alternatives` on a Function's record, and a generated trace view (Sections 3.2, 3.3) |
-| Tooling | Formal metamodel, exchange format, certified tools | Informal; Structurizr DSL as one implementation | Tool-agnostic (plain diagrams or simple YAML) |
+| Tooling | Formal metamodel, exchange format, certified tools | Informal; Structurizr DSL as one implementation | Tool-agnostic (simple YAML; exports per Section 4) |
 
 A few points worth stating plainly rather than leaving to the table:
 
@@ -1499,8 +1421,8 @@ A few points worth stating plainly rather than leaving to the table:
   that this detail churns fast, but because guiding a change correctly
   (Section 1) needs exactly this precision to exist as data. That's a
   real, knowingly-accepted maintenance cost, not an oversight.
-- No ArchiMate or C4 shapes, colors, or relationship names are reused;
-  the similarity is only at the level of the general idea (component +
+- No ArchiMate or C4 relationship names are reused (Section 4 maps them
+  instead); the similarity is only at the level of the general idea (component +
   contract + relation modeling, viewed at more than one zoom level),
   which is common ground shared by many architecture notations and not
   something any single framework owns. One term does overlap: ArchiMate
@@ -1536,7 +1458,7 @@ layer, in isolation, without the surrounding Component/Function/Data
 Object context or the Context-view landscape. Contour's structured
 record is closer in spirit to that kind of precision, applied across
 all seven elements rather than interfaces alone, and paired with the
-lighter-weight diagram those formats don't attempt to provide. Since
+lighter-weight Context-level summary those formats don't attempt to provide. Since
 v0.4 the relationship is directional: an Interface's spec in one of those
 formats is generated from the record by its binding, or checked against
 it, never the other way round (Section 3.3).
@@ -1544,6 +1466,15 @@ it, never the other way round (Section 3.3).
 ---
 
 ## Changelog
+
+- **Unreleased (draft)** — Diagrams removed from the paper. Contour is a
+  model, not a notation: Section 3.1 (metamodel diagram) became a table
+  of relations by level; Section 3.2 and Section 5 keep the Context and
+  Functionality views and the trace as model views, without drawings;
+  Section 4 (Notation) became Interoperability, mapping the model onto C4
+  / LikeC4 and ArchiMate and stating what an export loses. Principles 1,
+  2, 5, 6 and 7, the abstract, Sections 3.4–3.6 and the conclusion were
+  reworded to match. Section numbers are unchanged.
 
 - **v0.5** — One model, two directions (new principle 9 and Section
   3.7): a model has no layers, only a place where the filling-in

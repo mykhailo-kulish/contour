@@ -15,8 +15,9 @@ Systems — and each Actor's record names the **Functions** it uses.
 **Components** implement the System, grouping its Functions and the data
 they keep by lifecycle; **Interfaces** are the channels through which
 each caller reaches them. Seven element types and nine relationship
-verbs, across two levels of detail: a compact diagram for shape, and a
-structured record underneath for behavior, schemas and contracts.
+verbs, across two levels of detail, with a structured record under each
+element for behavior, schemas and contracts. Diagrams are generated or
+exported, not part of the model.
 
 Since v0.5 a model is **one model, completed from either direction**:
 **top-down**, from the Actors and the Functions they need, or
@@ -42,7 +43,7 @@ skills/                     the checker and agent skills that apply Contour
 ### The framework
 
 - [`contour.md`](contour.md) — the specification: motivation, design
-  principles, metamodel, notation, a worked example, limitations and
+  principles, metamodel, interoperability (C4 / LikeC4, ArchiMate), a worked example, limitations and
   conclusion. Section 3.7 describes the two directions and the
   contradiction/gap split.
 - [`contour.schema.json`](contour.schema.json) — the JSON Schema for a
