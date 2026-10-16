@@ -58,16 +58,18 @@ possibility — reconstructing an existing system's real prior behavior
 from its record alone — is left explicitly **optional** and untested;
 nothing else here depends on it.
 
-The framework is a model, not a notation. Seven element types and nine
-relationship verbs, one vocabulary partitioned across two levels of
-detail (Section 3), and no separate vocabulary per level. A **structured
-record** under each element carries the detail the outline can't —
-behavior, schemas, contracts, ordered steps. Contour defines no
-diagram notation: pictures are generated views of the model, drawn by
-whatever tool the reader prefers, and Section 4 maps the model onto C4
-(LikeC4) and ArchiMate for that purpose. The name says the same thing: a
-contour traces an outline at low resolution and leaves the interior to
-something else.
+Contour is a model, not a notation, and it is written in business
+language. Names are plain, every Function is described as steps and
+outcomes in business terms, and technical detail lives in the
+Interfaces, so a non-developer can read the model itself rather than a
+picture of it. It has seven element types and nine relationship verbs,
+partitioned across two levels of detail (Section 3), with a structured
+record under each element for behavior, schemas, contracts and ordered
+steps. It defines no diagram notation: pictures are views generated
+from the model, and Section 4 maps it onto C4 (LikeC4) and ArchiMate,
+which it complements rather than replaces. The name refers to the
+boundary it traces: the logical outline of a system, with the detail
+held in the records.
 
 This is a personal working paper, not a finished standard. The goal is
 to pressure-test whether a model this small still says enough to guide a
@@ -215,10 +217,10 @@ Contour elements. Lowercase "system" is the ordinary word.
    record disagree, the record is authoritative.
 
 7. **Written for three audiences at once.** A non-developer must be able
-   to read the model — the names, descriptions and a generated view of it
-   (Section 4) — unaided and describe a needed change in business
-   language; a developer must be able to turn that into a safe change; an
-   LLM must find the record unambiguous enough to do the same. This is
+   to read the model itself — plain-language names and descriptions, and
+   Functions stated as business steps and outcomes — unaided and describe
+   a needed change in business language; a developer must be able to
+   turn that into a safe change; an LLM must find the record unambiguous enough to do the same. This is
    why names are plain language and Functions are named for the work they
    do rather than their implementation — and why one model serves all
    three rather than three artifacts drifting apart.
