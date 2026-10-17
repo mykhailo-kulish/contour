@@ -4,7 +4,7 @@
 
 ### Defining logical boundaries — functionality, data, and interfaces — as a business-readable structure for propagating change into code
 
-**Version 0.5** — working draft
+**Version 0.6** — working draft
 
 **Author:** Mykhailo Kulish ([LinkedIn](https://www.linkedin.com/in/mkulish/))
 
@@ -1469,7 +1469,7 @@ it, never the other way round (Section 3.3).
 
 ## Changelog
 
-- **Unreleased (draft)** — Diagrams removed from the paper. Contour is a
+- **v0.6** — Diagrams removed from the paper. Contour is a
   model, not a notation: Section 3.1 (metamodel diagram) became a table
   of relations by level; Section 3.2 and Section 5 keep the Context and
   Functionality views and the trace as model views, without drawings;
