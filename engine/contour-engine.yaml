@@ -27,6 +27,7 @@ System:
     steps:
     - calls: Validate Element
       becomes: {Invalid: Rejected}
+    - {modifies: Contour Element Version}
     - {modifies: Contour Element}
     - {modifies: Contour Relationship}
     - {modifies: Contour Record}
@@ -43,10 +44,14 @@ System:
       the element's System becomes an edge (a uses step through the Interface it names, which may be a
       neighbour's), and every outgoing edge of a name-list verb is listed in the record. A Function's
       steps are never rewritten from edges, because order lives only in the steps. A name that resolves
-      to nothing stays as it is, a gap.
+      to nothing stays as it is, a gap. When the write updates an element that already exists, the record
+      body it is replacing is first copied, at its current version number, into Contour Element Version —
+      an append-only snapshot — so that the prior revision is kept and Diff Element has a "before" to
+      compare against; the live row then advances to the next version. The change note the caller gives
+      and which Interface wrote it are kept on the snapshot.
     requirements: [Element Write Is Atomic, Element Must Be Well Formed, Ownership Relations Are Stored,
-      Element Name Is Unique Within Its System]
-    guardrails: [Validation Precedes Persistence, Gaps Never Block A Write]
+      Element Name Is Unique Within Its System, Record History Is Kept]
+    guardrails: [Validation Precedes Persistence, Gaps Never Block A Write, History Is Append Only]
   - name: Delete Element
     description: >-
       Removes one stored element, its record, and every relationship where it is either endpoint, and
@@ -119,18 +124,56 @@ System:
       against the neighbour Systems its edges reach.
     requirements: [Enforce Contour Invariants, Report Gaps For Both Directions]
     guardrails: [Read-only function]
+  - name: Diff Element
+    description: >-
+      Compares two stored revisions of one element — a System included, since a System is itself an element
+      with its own record — and returns a typed delta, what changed in the record keyed by the record's own
+      fields and relationships, rather than a line-by-line text diff. The caller a change agent reaches for
+      first: it answers "what in this record is different now."
+    steps:
+    - {reads: Contour Element}
+    - {reads: Contour Record}
+    - {reads: Contour Element Version}
+    result: Diffed
+    alternatives:
+      Not Found: No element has this id.
+      No Such Revision: One or both of the requested versions were never recorded for this element.
+    behavior: >-
+      Reads the "before" body from Contour Element Version at the requested from-version (the live record
+      when the to-version is current) and the "after" body at the to-version, then computes a delta keyed
+      by the record's own vocabulary. Which fields a change can touch depends on the element's type, since
+      a System is itself an element with its own record: a System's description, groups, requirements and
+      guardrails; a Component's performs, owns, produces and rationale; an Interface's serves, binding and
+      exposes; a Function's steps, result, alternatives and behavior; a Data Object's or Event's schema —
+      and requirements and guardrails on any of them. Each change names the record field or relationship
+      verb it touches, whether it was added, removed or changed, and the value. Each change also carries an
+      implication, derived from the same Contour invariants Validate Element and Check Model enforce, that
+      names which consistency check or obligation the change puts at risk — a new Function alternative needs
+      a response mapping in every exposing Interface and a test; a changed performs may split a calls edge
+      across Components; a System gaining a groups entry is a new Component to allocate; an added requirement
+      or guardrail reference becomes an obligation to grade against. The from and to bodies are returned
+      alongside the delta so the delta needs no second lookup. Reads only; it records nothing.
+    requirements: [Record History Is Kept, Delta Is Typed And Field Keyed, Delta States Code Implications]
+    guardrails: [Read-only function]
   - name: Store Requirement
     description: >-
       Accepts one Requirement definition — id, name and description — validates it, persists it, and announces
       the change.
     steps:
+    - {modifies: Contour Definition Version}
     - {modifies: Contour Requirement}
     - {produces: Requirement Stored}
     result: Stored
     alternatives:
       Invalid: The name or description is blank.
       Name Taken: Another Requirement already has this name.
-    requirements: [Definition Write Is Atomic, Definition Name Is Unique]
+    behavior: >-
+      When the write updates a Requirement that already exists, its current description is first copied,
+      at its current version number, into Contour Definition Version before the live row advances — so a
+      Requirement a change is graded against can itself be diffed, which is what tells a change agent that
+      every element referencing it may need re-verification.
+    requirements: [Definition Write Is Atomic, Definition Name Is Unique, Record History Is Kept]
+    guardrails: [History Is Append Only]
   - name: Retrieve Requirement
     description: Returns one Requirement definition by name.
     steps:
@@ -155,13 +198,19 @@ System:
       Accepts one Guardrail definition — id, name and description — validates it, persists it, and announces
       the change.
     steps:
+    - {modifies: Contour Definition Version}
     - {modifies: Contour Guardrail}
     - {produces: Guardrail Stored}
     result: Stored
     alternatives:
       Invalid: The name or description is blank.
       Name Taken: Another Guardrail already has this name.
-    requirements: [Definition Write Is Atomic, Definition Name Is Unique]
+    behavior: >-
+      When the write updates a Guardrail that already exists, its current description is first copied, at
+      its current version number, into Contour Definition Version before the live row advances — so a
+      Guardrail a change must be graded against can itself be diffed when its boundary text changes.
+    requirements: [Definition Write Is Atomic, Definition Name Is Unique, Record History Is Kept]
+    guardrails: [History Is Append Only]
   - name: Retrieve Guardrail
     description: Returns one Guardrail definition by name.
     steps:
@@ -213,31 +262,31 @@ System:
     guardrails: [Proper field indexes, Read-only function]
   - name: Render Diagram
     description: >-
-      Produces a diagram (Mermaid) of one stored System — the Context view, or a Functionality-view
-      drill-down.
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Relationship}
-    - {reads: Contour Record}
-    result: Rendered
-    alternatives: {System Not Found: No System has this id.}
-    behavior: >-
-      Derives the diagram from the stored elements and relationships: the System opened, each Interface on
-      the boundary of the Component that performs what it exposes, neighbour Systems half-open, Function
-      labels naming the Interfaces that expose them, cross-Component uses labeled with their Interface,
-      step edges as an unordered summary of each Function's steps. A System not yet split into Components
-      is drawn with its Functions directly inside it.
-    guardrails: [Read-only function]
-  - name: Render Element Diagram
-    description: >-
-      Produces a diagram (Mermaid) scoped to one element and every relationship where it is either endpoint.
+      Produces a diagram (LikeC4) of one stored element: given a System, the whole-System view — the
+      Context view or a Functionality-view drill-down — and given any other element, a view scoped to that
+      element and every relationship where it is either endpoint. In every case each element type and each
+      relationship verb reads distinctly.
     steps:
     - {reads: Contour Element}
     - {reads: Contour Relationship}
     - {reads: Contour Record}
     result: Rendered
     alternatives: {Not Found: No element has this id.}
-    guardrails: [Read-only function]
+    behavior: >-
+      Looks the element up by id and branches on its type. For a System: the System opened, each Interface
+      on the boundary of the Component that performs what it exposes, neighbour Systems half-open, Function
+      labels naming the Interfaces that expose them, cross-Component uses labelled with their Interface,
+      step edges as an unordered summary of each Function's steps; a System not yet split into Components
+      is drawn with its Functions directly inside it. For any other element: that element and every
+      relationship where it is either endpoint, with the neighbour at the other end of each edge. In both
+      cases each element type is drawn with a shape that matches its kind and each relationship verb with
+      its own distinct edge style, so type and verb read without the label; an Event is drawn between the
+      Component that produces it and the Functions that consume it, as a flow rather than an orphaned node;
+      and each node carries a one-line summary from its record. Everything drawn is derived from stored
+      state; styling presents the model, it never adds to it.
+    requirements: [Every Relationship Verb Reads Distinctly, Every Element Type Reads Distinctly,
+      Events Are Drawn As Flow, Nodes Carry Their Own Summary]
+    guardrails: [Read-only function, Diagram Derives Only From Stored State, Gaps Never Block A Render]
   # --- Console screen Functions (Web UI binding over the core) ---------------
   # Each View screen reads the Data Objects it displays; each Create or Modify
   # screen calls the core write Function that validates and persists. The raw
@@ -449,6 +498,33 @@ System:
     schema: {id: uuid, elementId: uuid, body: object}
     requirements: [Uses full-text search]
     guardrails: [Proper field indexes]
+  - name: Contour Element Version
+    description: >-
+      An append-only snapshot of an element's record body at a past version. Store Element writes one of
+      these for the revision it is about to replace, before the live Contour Record advances, so every prior
+      revision is kept and Diff Element has a "before" to compare an "after" against. The live record is
+      always the current version; this table holds only the superseded ones.
+    schema:
+      elementId: uuid
+      version: integer
+      body: object
+      changeNote: string?
+      changedBy: enum(Contour Console, Contour MCP Server)?
+      createdAt: date-time
+    guardrails: [Proper field indexes]
+  - name: Contour Definition Version
+    description: >-
+      An append-only snapshot of a Requirement or Guardrail definition's description at a past version.
+      Store Requirement and Store Guardrail write one before the live definition advances, so a Requirement
+      or Guardrail a change is graded against can itself be diffed when its text changes.
+    schema:
+      definitionId: uuid
+      kind: enum(Requirement, Guardrail)
+      version: integer
+      description: string
+      changeNote: string?
+      createdAt: date-time
+    guardrails: [Proper field indexes]
   - name: Contour Requirement
     description: >-
       One stored Requirement definition (Section 3.6), referenced by name from the elements it applies
@@ -501,6 +577,7 @@ System:
     - Retrieve Element
     - Validate Element
     - Check Model
+    - Diff Element
     - Store Requirement
     - Retrieve Requirement
     - Delete Requirement
@@ -511,7 +588,6 @@ System:
     - Search Requirements
     - Search Guardrails
     - Render Diagram
-    - Render Element Diagram
     - View System
     - View Component
     - View Interface
@@ -534,6 +610,8 @@ System:
     - Contour Element
     - Contour Relationship
     - Contour Record
+    - Contour Element Version
+    - Contour Definition Version
     - Contour Requirement
     - Contour Guardrail
     produces:
@@ -558,15 +636,18 @@ System:
     serves: Modeler
     binding:
       style: Web UI
-      framework: {name: material-ui, llm-guide: 'https://mui.com/material-ui/llms.txt'}
-    requirements: [Element View in UI]
+      framework:
+        name: material-ui
+        llm-guide: 'https://mui.com/material-ui/llms.txt'
+        customization: {theme: Dark mode}
+    requirements: [Element View in UI, Diagram layout in UI]
     exposes:
     - Check Model
+    - Diff Element
     - Search Specifications
     - Search Requirements
     - Search Guardrails
     - Render Diagram
-    - Render Element Diagram
     - View System
     - View Component
     - View Interface
@@ -630,6 +711,23 @@ System:
               contradictions: '{ rule: string, finding: string }[]'
               gaps: '{ rule: string, finding: string, topDown: string, bottomUp: string }[]'
           System Not Found: error
+      Diff Element:
+        operation: diff_element
+        request: {id: uuid, fromVersion: integer, toVersion: integer}
+        responses:
+          Diffed:
+            code: result
+            body:
+              element: Contour Element { id, name, elementType, systemId }
+              from: integer
+              to: integer
+              fromBody: Contour Record.body
+              toBody: Contour Record.body
+              changes: >-
+                { field: string, verb: Contour Relationship.verb?, kind: enum(added, removed, changed),
+                name: string?, value: object?, implication: string }[]
+          Not Found: error
+          No Such Revision: error
       Store Requirement:
         operation: store_requirement
         request: {id: uuid, name: string, description: string}
@@ -691,19 +789,11 @@ System:
           Found: {code: result, body: 'Contour Guardrail[]'}
       Render Diagram:
         operation: render_diagram
-        request: {systemId: uuid}
-        responses:
-          Rendered:
-            code: result
-            body: {mermaid: string}
-          System Not Found: error
-      Render Element Diagram:
-        operation: render_element_diagram
         request: {id: uuid}
         responses:
           Rendered:
             code: result
-            body: {mermaid: string}
+            body: {likec4: string}
           Not Found: error
 Actor:
 - name: Modeler
@@ -731,11 +821,11 @@ Actor:
   - Create or Modify Requirement
   - Create or Modify Guardrail
   - Check Model
+  - Diff Element
   - Search Specifications
   - Search Requirements
   - Search Guardrails
   - Render Diagram
-  - Render Element Diagram
   requirements: [Works In A Browser, Listings Are Paginated]
   guardrails: [Diagrams Are Shown As Rendered]
 - name: AI Agent
@@ -746,6 +836,7 @@ Actor:
   - Delete Element
   - Retrieve Element
   - Check Model
+  - Diff Element
   - Store Requirement
   - Retrieve Requirement
   - Delete Requirement
@@ -756,7 +847,6 @@ Actor:
   - Search Requirements
   - Search Guardrails
   - Render Diagram
-  - Render Element Diagram
   requirements: [Reaches The System As Tools]
 
 Requirement:
@@ -820,6 +910,9 @@ Requirement:
     serves therefore resolves to exactly one element of the System; a name reached across Systems (a uses
     or consumes step to a neighbour) resolves through the Interface it names, or only when it is unique
     across all Systems. A store that would duplicate a name is rejected.
+- name: Diagram layout in UI
+  description: >-
+    Diagram component shall fit into designated widget and adjust its zoom level to fit elements into.
 - name: Element View in UI
   description: >-
     The Console's view of an element shows its name, description, the requirements and guardrails it
@@ -833,6 +926,48 @@ Requirement:
     element's own System — through the element's own edges first — never a same-named element of another
     System. Navigation keeps a history so the reader can step back. UUIDs are resolved to Element
     names.
+- name: Every Relationship Verb Reads Distinctly
+  description: >-
+    Each relationship verb the model stores and the diagram draws (uses, calls, reads, modifies, consumes,
+    references, depends-on) is rendered as a visually distinct edge — its own line style and/or colour — so
+    a reader distinguishes a data access from a call from an event flow without reading the label. Allocation
+    verbs that are absorbed into nesting (performs, owns, groups) are exempt because they are shown as
+    containment, not edges.
+- name: Every Element Type Reads Distinctly
+  description: >-
+    Each of the seven Contour element types is drawn with a shape that matches its kind — an Actor as a
+    person, a Data Object as storage, an Event as a queue, an Interface by its binding style, a
+    System/Component/Function as their own distinct shapes — so the type is legible from shape alone and
+    not from colour alone.
+- name: Events Are Drawn As Flow
+  description: >-
+    An Event appears on the diagram between the Component that produces it and the Functions that consume
+    it, so that both its production and its consumption read as a flow through the Event rather than the
+    Event appearing as an orphaned node. The producing relationship is shown, not hidden by nesting.
+- name: Nodes Carry Their Own Summary
+  description: >-
+    A node on the diagram shows a one-line summary drawn from its own record — an element's description, or
+    an Interface's binding — so the diagram is readable without opening each element. The summary is derived
+    from stored record fields only.
+- name: Record History Is Kept
+  description: >-
+    Every write that updates an existing element, Requirement or Guardrail first preserves the record body
+    (or description) it is about to replace, at its current version number, before the live row advances.
+    A superseded revision is never discarded, so any past revision can be read back and compared; the live
+    row remains the current version and the preserved rows the older ones.
+- name: Delta Is Typed And Field Keyed
+  description: >-
+    Diff Element reports a change as a structured delta keyed by the record's own fields and relationship
+    verbs — each entry naming the field or verb it touches, whether it was added, removed or changed, and
+    the value — not as a line-by-line text diff. A reader (human or agent) can act on each change without
+    re-parsing prose.
+- name: Delta States Code Implications
+  description: >-
+    Each change Diff Element reports carries an implication derived from the same Contour invariants
+    Validate Element and Check Model enforce, naming which consistency check or obligation the change puts
+    at risk — a new alternative needs a response mapping in every exposing Interface and a test; a changed
+    performs may split a calls edge; an added requirement or guardrail reference becomes an obligation to
+    grade against — so the delta reads as a change agent's task list, not just a record of what differs.
 
 Guardrail:
 - name: Follow Technology Radar
@@ -866,5 +1001,19 @@ Guardrail:
     element is rejected only for a contradiction, never because the model still has gaps.
 - name: Diagrams Are Shown As Rendered
   description: >-
-    A Modeler sees the diagram Render Diagram or Render Element Diagram produces, unchanged; nothing re-derives
-    a diagram or alters its notation.
+    A Modeler sees the diagram Render Diagram produces, unchanged; nothing re-derives a diagram or alters
+    its notation.
+- name: Diagram Derives Only From Stored State
+  description: >-
+    The diagram adds nothing the model does not contain: every node, every edge, and every style applied
+    to them is derived from a stored element, relationship, or record field. Styling presents the model;
+    it never invents structure.
+- name: Gaps Never Block A Render
+  description: >-
+    An incomplete model still renders. A reference that resolves to nothing is simply absent from the
+    diagram, never an error; gaps are Check Model's concern, not the render's.
+- name: History Is Append Only
+  description: >-
+    A preserved revision in Contour Element Version or Contour Definition Version is written once and never
+    updated or deleted while its element or definition exists. A write adds the superseded revision; it
+    never rewrites history. Diff Element and the other reads treat these rows as immutable facts.
