@@ -228,7 +228,7 @@ server. Its tools then appear as `mcp__contour-engine__store_element`,
 
 ## Status
 
-This is a personal working paper (current version: **v0.5**, noted in
+This is a personal working paper (current version: **v0.6**, noted in
 `contour.md`), not a finished standard. The goal is to pressure-test
 whether a model this small still says enough to guide a change into
 code correctly.
