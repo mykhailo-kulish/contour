@@ -66,7 +66,7 @@ except Exception:
 
 print("The request relates to the Contour framework. Before applying the "
       "contour-reverse or contour-verify skill, use the framework spec below "
-      "(contour.md, Contour v0.5) as the normative reference: the seven "
+      "(contour.md, Contour v0.6) as the normative reference: the seven "
       "elements, nine relationship verbs (the Component-to-Component one spelled "
       "depends-on), the two zoom levels (Context view and Functionality view), "
       "Interfaces that declare no owning Component and serve one caller (an Actor "

@@ -1,6 +1,6 @@
 # Contour — Worked Examples
 
-Companion to [`contour.md`](../contour.md) (v0.5). The paper's Section 5
+Companion to [`contour.md`](../contour.md) (v0.6). The paper's Section 5
 shows one System on one page; this document walks through the model
 files behind it, the second System it talks to, and the Contour
 engine — one Component reached through two very different channels —
