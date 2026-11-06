@@ -2,9 +2,9 @@
 
 The **contour-engine** is a Contour System: it stores, validates, checks,
 searches and exports Contour specifications and owns all Contour data. It serves
-two Actors from the same runtime — the **Modeler** through the **Contour
-Console** (a form-based Web UI) and the **AI Agent** through the **Contour MCP
-Server** (as tools).
+two Actors from the same runtime — the **Modeler** through **Meanings**, the
+engine's built-in browser Console (a form-based Web UI), and the **AI Agent**
+through the **Contour MCP Server** (as tools).
 
 This folder holds the engine's **implementation-agnostic model** and one or more
 concrete **implementations** of it:
@@ -13,7 +13,7 @@ concrete **implementations** of it:
 engine/
   contour-engine.yaml    the Contour model of the engine — the thing to build from
   docker-compose.yml     local start composition (engine + PostgreSQL)
-  nodejs/                the NodeJS implementation (TypeScript core, Fastify, React Console)
+  nodejs/                the NodeJS implementation (TypeScript core, Fastify, Meanings React UI)
 ```
 
 The model (`contour-engine.yaml`) is the authority and names no technology; each
@@ -24,9 +24,9 @@ implementations can sit beside `nodejs/` without changing the model.
 
 [`contour-engine.yaml`](contour-engine.yaml) is a Contour spec, not documentation
 of existing code — one deployable Component, `contour-engine`, that performs
-every Function and owns all data, with two Interfaces (`Contour Console` Web UI,
-`Contour MCP Server` tools) over one core. Before building or after changing it,
-the model should check clean:
+every Function and owns all data, with two Interfaces (`Meanings` — the browser
+Console Web UI — and `Contour MCP Server` tools) over one core. Before building
+or after changing it, the model should check clean:
 
 ```
 python3 ../skills/contour-check.py contour-engine.yaml
@@ -34,11 +34,11 @@ python3 ../skills/contour-check.py contour-engine.yaml
 
 (0 contradictions and 0 gaps.)
 
-## The Console
+## Meanings — the Console
 
-The Modeler works in a three-pane, form-based Web UI (dark theme) served at
-`/` by the engine itself — no separate front-end product, the same core the MCP
-Server uses:
+The Modeler works in **Meanings**, the engine's built-in Console: a three-pane,
+form-based Web UI (dark theme) served at `/` by the engine itself — no separate
+front-end product, the same core the MCP Server uses:
 
 - **Model tree** (left) — every System as a root, expanded into its Actors and
   their Functions plus the System's Data Objects, Events, Requirements and
@@ -73,7 +73,7 @@ The local start composition brings up the engine and PostgreSQL. From this
 docker compose up --build
 ```
 
-- Console (Web UI): http://localhost:8000/
+- Meanings Console (Web UI): http://localhost:8000/
 - MCP endpoint (streamable HTTP): http://localhost:8000/mcp
 - Health: http://localhost:8000/health
 

@@ -60,12 +60,12 @@ skills/                     the checker and agent skills that apply Contour
   model of the Contour engine itself: one deployable Component,
   `contour-engine`, that stores, validates, checks, searches and renders
   Contour specifications and owns all Contour data. It serves two
-  Actors from the same runtime: the Modeler through the **Contour
-  Console**, a form-based Web UI — a model tree, a per-element-type
-  editor, and an inspector of what is wrong and what is still to fill
-  in, with a Form/Diagram toggle that shows each element's generated
-  diagram — and the AI Agent through the **Contour MCP Server**, as
-  tools. It is meant to be **built from** — see
+  Actors from the same runtime: the Modeler through **Meanings**, the
+  engine's built-in browser Console — a form-based Web UI with a model
+  tree, a per-element-type editor, and an inspector of what is wrong and
+  what is still to fill in, with a Form/Diagram toggle that shows each
+  element's generated diagram — and the AI Agent through the **Contour
+  MCP Server**, as tools. It is meant to be **built from** — see
   [`engine/README.md`](engine/README.md) for how to build it, run it
   locally, and connect an agent, plus the NodeJS implementation under
   [`engine/nodejs/`](engine/nodejs/).
