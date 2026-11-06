@@ -1,0 +1,34 @@
+# Contour System — local start composition (Requirement: Local start composition).
+# One Node.js service (contour-engine) serves the Web UI (Contour Console) and
+# the MCP tools (Contour MCP Server) over one core, backed by PostgreSQL.
+# A local development build starts with full features from this composition.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: contour
+      POSTGRES_PASSWORD: contour
+      POSTGRES_DB: contour
+    ports:
+      - "5432:5432"
+    volumes:
+      - contour-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contour"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  engine:
+    build: ./nodejs
+    environment:
+      CONTOUR_DATABASE_URL: postgresql://contour:contour@db:5432/contour
+      PORT: "8000"
+    ports:
+      - "8000:8000"   # Web UI at /, Contour MCP Server at /mcp
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  contour-db:

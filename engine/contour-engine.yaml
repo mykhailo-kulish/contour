@@ -1,1019 +1,1354 @@
-# Contour v0.6 — contour-engine
-#
-# One model of the Contour System. It can be completed from either end:
-# top-down, from the Actors the System serves and the Functions they need, or
-# bottom-up, from the Components and Interfaces found in the source code. All
-# elements are peers at one level; `rationale` records why a Component or
-# Interface exists, in terms of the Actors' needs, Requirements and Guardrails.
-# contour-check.py reports contradictions, and the gaps left to fill in either
-# direction.
+# Contour — Contour System record
+# Exported from the live contour-engine (scripts/export.mjs).
+# Authoring schema consumed by scripts/ingest.mjs.
 
 System:
   name: Contour
-  description: >-
-    Stores, searches and manages Contour specifications — the models and structured records defined by
-    the Contour framework — for the people who model with them and for AI agents that work with them.
-  requirements: [Local start composition, Element Name Is Unique Within Its System]
+  description: Stores, searches and manages Contour specifications — the models and structured records
+    defined by the Contour framework — for the people who model with them and for AI agents that
+    work with them.
+  requirements:
+    - Local start composition
+    - Element Name Is Unique Within Its System
   guardrails:
-  - Follow Technology Radar
-  - No Infrastructure In Model
-  - One Core For Every Actor
-  - Writes Are Validated By The System
-  functions:
-  - name: Store Element
-    description: >-
-      Accepts one Contour element — its record and the relationships where it is the "from" side — validates
-      it, persists it, and announces the change.
-    steps:
-    - calls: Validate Element
-      becomes: {Invalid: Rejected}
-    - {modifies: Contour Element Version}
-    - {modifies: Contour Element}
-    - {modifies: Contour Relationship}
-    - {modifies: Contour Record}
-    - {produces: Element Stored}
-    result: Stored
-    alternatives:
-      Rejected: >-
-        The element contradicts the Contour metamodel or persisted state; nothing is stored.
-    behavior: >-
-      Upserts the element row, its record body and its outgoing edges in a single transaction. Before
-      validating, it brings the record's references and the outgoing edges into agreement both ways: every
-      name the record lists — a System's groups, a Component's performs, owns and produces, an Interface's
-      exposes, an Actor's uses, a Function's step and alternative-effect targets — that resolves within
-      the element's System becomes an edge (a uses step through the Interface it names, which may be a
-      neighbour's), and every outgoing edge of a name-list verb is listed in the record. A Function's
-      steps are never rewritten from edges, because order lives only in the steps. A name that resolves
-      to nothing stays as it is, a gap. When the write updates an element that already exists, the record
-      body it is replacing is first copied, at its current version number, into Contour Element Version —
-      an append-only snapshot — so that the prior revision is kept and Diff Element has a "before" to
-      compare against; the live row then advances to the next version. The change note the caller gives
-      and which Interface wrote it are kept on the snapshot.
-    requirements: [Element Write Is Atomic, Element Must Be Well Formed, Ownership Relations Are Stored,
-      Element Name Is Unique Within Its System, Record History Is Kept]
-    guardrails: [Validation Precedes Persistence, Gaps Never Block A Write, History Is Append Only]
-  - name: Delete Element
-    description: >-
-      Removes one stored element, its record, and every relationship where it is either endpoint, and
-      announces the removal.
-    steps:
-    - {modifies: Contour Relationship}
-    - {modifies: Contour Record}
-    - {modifies: Contour Element}
-    - {produces: Element Deleted}
-    result: Deleted
-    alternatives: {Already Absent: No such item exists; nothing is deleted.}
-    requirements: [Element Write Is Atomic]
-  - name: Retrieve Element
-    description: >-
-      Returns one stored element by id — its record plus its immediate relationships, outgoing and incoming
-      — not the whole model.
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Relationship}
-    - {reads: Contour Record}
-    result: Found
-    alternatives: {Not Found: No element has this id.}
-    guardrails: [Read-only function]
-  - name: Validate Element
-    description: >-
-      Checks one submitted element and its outgoing relationships against the Contour metamodel and against
-      already-persisted state.
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Requirement}
-    - {reads: Contour Guardrail}
-    result: Valid
-    alternatives: {Invalid: One or more violations were found; they are reported in full.}
-    behavior: >-
-      Enforces the Contour v0.5 contradictions (Section 3.3) that can be decided at element scope against
-      persisted state: an element other than a System names a stored System; its name is not taken by
-      another element of that System, nor a System's name by another System; a relationship target
-      already exists, and allocation, exposure, calls, reads, modifies and produces stay inside the
-      System, while only uses, consumes, references and depends-on may reach another System; allocation is single — one performer per
-      Function, one owner per Data Object, one producing Component per Event; reads and modifies stay
-      with the owner, and an Event is produced where its Function runs; a calls step stays within one
-      Component; an Interface serves an existing Actor or System and exposes only Functions one Component
-      performs; each exposed Function's responses cover exactly its outcomes; a uses step names an Interface
-      that exposes its target and serves the caller — System within one System, the calling System by
-      name across two — and maps Unreachable; becomes keys are the callee's outcomes and values the
-      caller's own alternatives; consumes appears only first; an Actor uses only existing Functions that
-      no Event starts; Event names are past tense; every referenced Requirement and Guardrail is defined.
-      An element that leaves the model incomplete is valid: gaps are Check Model's concern, never this one's.
-    requirements: [Enforce Contour Invariants, Element Name Is Unique Within Its System]
-    guardrails: [Read-only function, Gaps Never Block A Write]
-  - name: Check Model
-    description: >-
-      Checks one stored System — the System and everything that belongs to it — and reports what is
-      wrong with it separately from what is not filled in yet.
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Relationship}
-    - {reads: Contour Record}
-    - {reads: Contour Requirement}
-    - {reads: Contour Guardrail}
-    result: Checked
-    alternatives: {System Not Found: No System has this id.}
-    behavior: >-
-      Reports contradictions — wrong however the model was started — and gaps — not filled in yet — in
-      two separate lists. Every gap carries its next step from each direction: top-down, from the Actors
-      and the Functions they use, and bottom-up, from the Components and Interfaces found in code. A model
-      System with gaps and no contradictions is a model in progress, not an invalid one. Covers what element-scope
-      validation can't decide: allocation coverage, Actor uses against what the Interfaces serving it
-      expose, Interfaces serving System against the uses steps that call them, rationale, and uses steps
-      against the neighbour Systems its edges reach.
-    requirements: [Enforce Contour Invariants, Report Gaps For Both Directions]
-    guardrails: [Read-only function]
-  - name: Diff Element
-    description: >-
-      Compares two stored revisions of one element — a System included, since a System is itself an element
-      with its own record — and returns a typed delta, what changed in the record keyed by the record's own
-      fields and relationships, rather than a line-by-line text diff. The caller a change agent reaches for
-      first: it answers "what in this record is different now."
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Record}
-    - {reads: Contour Element Version}
-    result: Diffed
-    alternatives:
-      Not Found: No element has this id.
-      No Such Revision: One or both of the requested versions were never recorded for this element.
-    behavior: >-
-      Reads the "before" body from Contour Element Version at the requested from-version (the live record
-      when the to-version is current) and the "after" body at the to-version, then computes a delta keyed
-      by the record's own vocabulary. Which fields a change can touch depends on the element's type, since
-      a System is itself an element with its own record: a System's description, groups, requirements and
-      guardrails; a Component's performs, owns, produces and rationale; an Interface's serves, binding and
-      exposes; a Function's steps, result, alternatives and behavior; a Data Object's or Event's schema —
-      and requirements and guardrails on any of them. Each change names the record field or relationship
-      verb it touches, whether it was added, removed or changed, and the value. Each change also carries an
-      implication, derived from the same Contour invariants Validate Element and Check Model enforce, that
-      names which consistency check or obligation the change puts at risk — a new Function alternative needs
-      a response mapping in every exposing Interface and a test; a changed performs may split a calls edge
-      across Components; a System gaining a groups entry is a new Component to allocate; an added requirement
-      or guardrail reference becomes an obligation to grade against. The from and to bodies are returned
-      alongside the delta so the delta needs no second lookup. Reads only; it records nothing.
-    requirements: [Record History Is Kept, Delta Is Typed And Field Keyed, Delta States Code Implications]
-    guardrails: [Read-only function]
-  - name: Store Requirement
-    description: >-
-      Accepts one Requirement definition — id, name and description — validates it, persists it, and announces
-      the change.
-    steps:
-    - {modifies: Contour Definition Version}
-    - {modifies: Contour Requirement}
-    - {produces: Requirement Stored}
-    result: Stored
-    alternatives:
-      Invalid: The name or description is blank.
-      Name Taken: Another Requirement already has this name.
-    behavior: >-
-      When the write updates a Requirement that already exists, its current description is first copied,
-      at its current version number, into Contour Definition Version before the live row advances — so a
-      Requirement a change is graded against can itself be diffed, which is what tells a change agent that
-      every element referencing it may need re-verification.
-    requirements: [Definition Write Is Atomic, Definition Name Is Unique, Record History Is Kept]
-    guardrails: [History Is Append Only]
-  - name: Retrieve Requirement
-    description: Returns one Requirement definition by name.
-    steps:
-    - {reads: Contour Requirement}
-    result: Found
-    alternatives: {Not Found: No Requirement has this name.}
-    guardrails: [Read-only function]
-  - name: Delete Requirement
-    description: Removes one Requirement definition and announces the removal.
-    steps:
-    - {reads: Contour Record}
-    - {modifies: Contour Requirement}
-    - {produces: Requirement Deleted}
-    result: Deleted
-    alternatives:
-      Still Referenced: A stored element still references it; the delete is refused.
-      Already Absent: No such item exists; nothing is deleted.
-    requirements: [Definition Write Is Atomic]
-    guardrails: [Referenced Definitions Must Exist]
-  - name: Store Guardrail
-    description: >-
-      Accepts one Guardrail definition — id, name and description — validates it, persists it, and announces
-      the change.
-    steps:
-    - {modifies: Contour Definition Version}
-    - {modifies: Contour Guardrail}
-    - {produces: Guardrail Stored}
-    result: Stored
-    alternatives:
-      Invalid: The name or description is blank.
-      Name Taken: Another Guardrail already has this name.
-    behavior: >-
-      When the write updates a Guardrail that already exists, its current description is first copied, at
-      its current version number, into Contour Definition Version before the live row advances — so a
-      Guardrail a change must be graded against can itself be diffed when its boundary text changes.
-    requirements: [Definition Write Is Atomic, Definition Name Is Unique, Record History Is Kept]
-    guardrails: [History Is Append Only]
-  - name: Retrieve Guardrail
-    description: Returns one Guardrail definition by name.
-    steps:
-    - {reads: Contour Guardrail}
-    result: Found
-    alternatives: {Not Found: No Guardrail has this name.}
-    guardrails: [Read-only function]
-  - name: Delete Guardrail
-    description: Removes one Guardrail definition and announces the removal.
-    steps:
-    - {reads: Contour Record}
-    - {modifies: Contour Guardrail}
-    - {produces: Guardrail Deleted}
-    result: Deleted
-    alternatives:
-      Still Referenced: A stored element still references it; the delete is refused.
-      Already Absent: No such item exists; nothing is deleted.
-    requirements: [Definition Write Is Atomic]
-    guardrails: [Referenced Definitions Must Exist]
-  - name: Search Specifications
-    description: >-
-      Finds stored elements by free text over their records and by structural filters — element type,
-      part of a name or a whole name, the System it belongs to (the System included) or the Component it
-      is allocated to — one page at a time.
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Record}
-    result: Found
-    behavior: >-
-      Returns one page of matches, by relevance for a text query and by name otherwise, with the total
-      count. Element-scoped: definitions are searched by Search Requirements and Search Guardrails.
-    requirements: [Uses full-text search]
-    guardrails: [Proper field indexes, Read-only function]
-  - name: Search Requirements
-    description: >-
-      Finds Requirement definitions by free text over their name and description.
-    steps:
-    - {reads: Contour Requirement}
-    result: Found
-    requirements: [Uses full-text search]
-    guardrails: [Proper field indexes, Read-only function]
-  - name: Search Guardrails
-    description: >-
-      Finds Guardrail definitions by free text over their name and description.
-    steps:
-    - {reads: Contour Guardrail}
-    result: Found
-    requirements: [Uses full-text search]
-    guardrails: [Proper field indexes, Read-only function]
-  - name: Render Diagram
-    description: >-
-      Produces a diagram (LikeC4) of one stored element: given a System, the whole-System view — the
-      Context view or a Functionality-view drill-down — and given any other element, a view scoped to that
-      element and every relationship where it is either endpoint. In every case each element type and each
-      relationship verb reads distinctly.
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Relationship}
-    - {reads: Contour Record}
-    result: Rendered
-    alternatives: {Not Found: No element has this id.}
-    behavior: >-
-      Looks the element up by id and branches on its type. For a System: the System opened, each Interface
-      on the boundary of the Component that performs what it exposes, neighbour Systems half-open, Function
-      labels naming the Interfaces that expose them, cross-Component uses labelled with their Interface,
-      step edges as an unordered summary of each Function's steps; a System not yet split into Components
-      is drawn with its Functions directly inside it. For any other element: that element and every
-      relationship where it is either endpoint, with the neighbour at the other end of each edge. In both
-      cases each element type is drawn with a shape that matches its kind and each relationship verb with
-      its own distinct edge style, so type and verb read without the label; an Event is drawn between the
-      Component that produces it and the Functions that consume it, as a flow rather than an orphaned node;
-      and each node carries a one-line summary from its record. Everything drawn is derived from stored
-      state; styling presents the model, it never adds to it.
-    requirements: [Every Relationship Verb Reads Distinctly, Every Element Type Reads Distinctly,
-      Events Are Drawn As Flow, Nodes Carry Their Own Summary]
-    guardrails: [Read-only function, Diagram Derives Only From Stored State, Gaps Never Block A Render]
-  # --- Console screen Functions (Web UI binding over the core) ---------------
-  # Each View screen reads the Data Objects it displays; each Create or Modify
-  # screen calls the core write Function that validates and persists. The raw
-  # element and definition writes are no longer exposed on the Console directly
-  # (they remain on the MCP Server for the AI Agent); the Console exposes only
-  # these screens, and each screen's steps name the core Function it drives.
-  - name: View System
-    description: Renders a UI with System View widget with its name, description, Actors and record.
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Record}
-    - {reads: Contour Relationship}
-    result: Rendered
-  - name: View Component
-    description: >-
-      Renders a UI with Component View widget: the Component's name, description, the Functions it performs,
-      the Data Objects it owns, the Events it produces, its rationale/requirements/guardrails, relationships
-      and diagram. Element ids' should be resolved to element names.
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Record}
-    - {reads: Contour Relationship}
-    result: Rendered
-  - name: View Interface
-    description: >-
-      Renders a UI with Interface View widget: the Interface's name, description, who it serves, its binding,
-      the Functions it exposes, its rationale/requirements/guardrails, relationships and diagram. Element
-      ids' should be resolved to element names.
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Record}
-    - {reads: Contour Relationship}
-    result: Rendered
-  - name: View Function
-    description: >-
-      Renders a UI with Function View widget: its name, description, ordered steps, outcomes (the result
-      and the alternatives), behavior, and the rationale, requirements and guardrails it references, together
-      with the element's relationships and diagram. Element ids' should be resolved to element names.
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Record}
-    - {reads: Contour Relationship}
-    result: Rendered
-  - name: View Event
-    description: >-
-      Renders a UI with Event View widget: the Event's name, description, schema, the Components that produce
-      it and the Functions that consume it, its rationale/requirements/guardrails, relationships and diagram.
-      Element ids' should be resolved to element names.
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Record}
-    - {reads: Contour Relationship}
-    result: Rendered
-  - name: View Data Object
-    description: >-
-      Renders a UI with Data Object View widget: the Data Object's name, description, schema, the Component
-      that owns it and the Functions that read or modify it, its rationale/requirements/guardrails, relationships
-      and diagram. Element ids' should be resolved to element names.
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Record}
-    - {reads: Contour Relationship}
-    result: Rendered
-  - name: View Actor
-    description: >-
-      Renders a UI with Actor View widget: the Actor's name, description, the Functions it uses, its
-      rationale/requirements/guardrails, relationships and diagram. Element ids' should be resolved to
-      element names.
-    steps:
-    - {reads: Contour Element}
-    - {reads: Contour Record}
-    - {reads: Contour Relationship}
-    result: Rendered
-  - name: View Requirement
-    description: >-
-      Renders a UI with Requirement View widget: the Requirement definition's name and the obligation it
-      states, together with the elements that reference it (read from the records that name it). A read
-      view the Modeler lands on when opening a Requirement definition.
-    steps:
-    - {reads: Contour Requirement}
-    - {reads: Contour Record}
-    result: Rendered
-  - name: View Guardrail
-    description: >-
-      Renders a UI with Guardrail View widget: the Guardrail definition's name and the boundary it states,
-      together with the elements that reference it (read from the records that name it). A read view the
-      Modeler lands on when opening a Guardrail definition.
-    steps:
-    - {reads: Contour Guardrail}
-    - {reads: Contour Record}
-    result: Rendered
-  - name: Create or Modify System
-    description: >-
-      UI Form that offers to edit attributes required to create new or edit existing System element.
-      Element ids' should be resolved to element names. Submitted through the core, which validates every
-      write.
-    steps:
-    - {calls: Store Element}
-    - {calls: Delete Element}
-    result: Submitted
-  - name: Create or Modify Component
-    description: >-
-      UI Form that offers to edit the attributes required to create a new or edit an existing Component
-      element: its description, the Functions it performs, the Data Objects it owns, the Events it produces,
-      and its rationale/requirements/guardrails. Element ids' should be resolved to element names. Submitted
-      through the core, which validates every write.
-    steps:
-    - {calls: Store Element}
-    - {calls: Delete Element}
-    result: Submitted
-  - name: Create or Modify Interface
-    description: >-
-      UI Form that offers to edit the attributes required to create a new or edit an existing Interface
-      element: its description, who it serves, its binding, the Functions it exposes, and its
-      rationale/requirements/guardrails. Element ids' should be resolved to element names. Submitted through
-      the core, which validates every write.
-    steps:
-    - {calls: Store Element}
-    - {calls: Delete Element}
-    result: Submitted
-  - name: Create or Modify Function
-    description: >-
-      UI Form that offers to edit attributes required to create new or edit existing Function element: its
-      description, ordered steps, result, alternatives, behavior, and the rationale, requirements and
-      guardrails it references. Element ids' should be resolved to element names. Submitted through the
-      core, which validates every write.
-    steps:
-    - {calls: Store Element}
-    - {calls: Delete Element}
-    result: Submitted
-  - name: Create or Modify Event
-    description: >-
-      UI Form that offers to edit the attributes required to create a new or edit an existing Event element:
-      its description and schema, and its rationale/requirements/guardrails. Element ids' should be resolved
-      to element names. Submitted through the core, which validates every write.
-    steps:
-    - {calls: Store Element}
-    - {calls: Delete Element}
-    result: Submitted
-  - name: Create or Modify Data Object
-    description: >-
-      UI Form that offers to edit the attributes required to create a new or edit an existing Data Object
-      element: its description and schema, and its rationale/requirements/guardrails. Element ids' should
-      be resolved to element names. Submitted through the core, which validates every write.
-    steps:
-    - {calls: Store Element}
-    - {calls: Delete Element}
-    result: Submitted
-  - name: Create or Modify Actor
-    description: >-
-      UI Form that offers to edit the attributes required to create a new or edit an existing Actor element:
-      its description, the Functions it uses, and its rationale/requirements/guardrails. Element ids' should
-      be resolved to element names. Submitted through the core, which validates every write.
-    steps:
-    - {calls: Store Element}
-    - {calls: Delete Element}
-    result: Submitted
-  - name: Create or Modify Requirement
-    description: >-
-      UI Form that offers to edit the attributes required to create a new or edit an existing Requirement
-      definition: its name and the obligation (description) it states. Submitted through the core, which
-      validates every write.
-    steps:
-    - {calls: Store Requirement}
-    - {calls: Delete Requirement}
-    result: Submitted
-  - name: Create or Modify Guardrail
-    description: >-
-      UI Form that offers to edit the attributes required to create a new or edit an existing Guardrail
-      definition: its name and the boundary (description) it states. Submitted through the core, which
-      validates every write.
-    steps:
-    - {calls: Store Guardrail}
-    - {calls: Delete Guardrail}
-    result: Submitted
-  dataObjects:
-  - name: Contour Element
-    description: >-
-      One stored Contour element — a System, Component, Interface, Function, Event, Data Object or Actor
-      — persisted and retrieved individually rather than as part of a whole-System payload. Every element
-      but a System belongs to one System, which is its scope: names are unique within it. Which Component
-      a Function, Data Object or Event is allocated to is a performs, owns or produces relationship, and an
-      Interface's Component is derived. A neighbour System is stored like any other, half-open: only the
-      elements another System touches.
-    schema:
-      id: uuid
-      name: string
-      version: integer
-      systemId: uuid?
-      createdAt: date-time
-      updatedAt: date-time
-      elementType: enum(System, Component, Interface, Function, Event, DataObject, Actor)
-  - name: Contour Relationship
-    description: >-
-      One edge between two already-persisted elements. Declared and persisted as part of the "from" element's
-      Store Element — explicitly, or derived from a reference its record makes — never submitted on its own.
-    schema:
-      id: uuid
-      fromElementId: uuid
-      toElementId: uuid
-      verb: >-
-        enum(groups, performs, exposes, uses, calls, produces, consumes, reads, modifies, owns, references,
-        depends-on)
-  - name: Contour Record
-    description: >-
-      The structured record attached to each element — description, schema, a Function's steps, result
-      and alternatives, an Interface's serves, binding and exposed Functions, an Actor's uses, a Component's
-      or Interface's rationale, and referenced requirement and guardrail names.
-    schema: {id: uuid, elementId: uuid, body: object}
-    requirements: [Uses full-text search]
-    guardrails: [Proper field indexes]
-  - name: Contour Element Version
-    description: >-
-      An append-only snapshot of an element's record body at a past version. Store Element writes one of
-      these for the revision it is about to replace, before the live Contour Record advances, so every prior
-      revision is kept and Diff Element has a "before" to compare an "after" against. The live record is
-      always the current version; this table holds only the superseded ones.
-    schema:
-      elementId: uuid
-      version: integer
-      body: object
-      changeNote: string?
-      changedBy: enum(Contour Console, Contour MCP Server)?
-      createdAt: date-time
-    guardrails: [Proper field indexes]
-  - name: Contour Definition Version
-    description: >-
-      An append-only snapshot of a Requirement or Guardrail definition's description at a past version.
-      Store Requirement and Store Guardrail write one before the live definition advances, so a Requirement
-      or Guardrail a change is graded against can itself be diffed when its text changes.
-    schema:
-      definitionId: uuid
-      kind: enum(Requirement, Guardrail)
-      version: integer
-      description: string
-      changeNote: string?
-      createdAt: date-time
-    guardrails: [Proper field indexes]
-  - name: Contour Requirement
-    description: >-
-      One stored Requirement definition (Section 3.6), referenced by name from the elements it applies
-      to.
-    schema: {id: uuid, name: string, description: string, version: integer, createdAt: date-time, updatedAt: date-time}
-    requirements: [Uses full-text search]
-    guardrails: [Proper field indexes]
-  - name: Contour Guardrail
-    description: >-
-      One stored Guardrail definition (Section 3.6), referenced by name from the elements it bounds.
-    schema: {id: uuid, name: string, description: string, version: integer, createdAt: date-time, updatedAt: date-time}
-    requirements: [Uses full-text search]
-    guardrails: [Proper field indexes]
-  events:
-  - name: Element Stored
-    description: >-
-      One Contour element, its record and its outgoing relationships were created or updated.
-    schema:
-      elementId: uuid
-      systemId: uuid?
-      name: string
-      elementType: Contour Element.elementType
-      version: integer
-      storedAt: date-time
-  - name: Element Deleted
-    description: One Contour element, its record and its relationships were removed.
-    schema: {elementId: uuid, systemId: "uuid?", deletedAt: date-time}
-  - name: Requirement Stored
-    description: One Requirement definition was created or updated.
-    schema: {name: string, version: integer, storedAt: date-time}
-  - name: Requirement Deleted
-    description: One Requirement definition was removed.
-    schema: {name: string, deletedAt: date-time}
-  - name: Guardrail Stored
-    description: One Guardrail definition was created or updated.
-    schema: {name: string, version: integer, storedAt: date-time}
-  - name: Guardrail Deleted
-    description: One Guardrail definition was removed.
-    schema: {name: string, deletedAt: date-time}
+    - Follow Technology Radar
+    - No Infrastructure In Model
+    - One Core For Every Actor
+    - Writes Are Validated By The System
   components:
-  - name: contour-engine
-    description: >-
-      The Contour System deployable. Stores, validates, searches and renders Contour
-      specifications, owns all Contour data, and serves the Modeler's browser Console and the AI Agent's
-      MCP tools from the same runtime. Performs every Function.
-    rationale: [One Core For Every Actor, 'principle 4: data has a home', Works In A Browser]
-    performs:
-    - Store Element
-    - Delete Element
-    - Retrieve Element
-    - Validate Element
-    - Check Model
-    - Diff Element
-    - Store Requirement
-    - Retrieve Requirement
-    - Delete Requirement
-    - Store Guardrail
-    - Retrieve Guardrail
-    - Delete Guardrail
-    - Search Specifications
-    - Search Requirements
-    - Search Guardrails
-    - Render Diagram
-    - View System
-    - View Component
-    - View Interface
-    - View Function
-    - View Event
-    - View Data Object
-    - View Actor
-    - View Requirement
-    - View Guardrail
-    - Create or Modify System
-    - Create or Modify Component
-    - Create or Modify Interface
-    - Create or Modify Function
-    - Create or Modify Event
-    - Create or Modify Data Object
-    - Create or Modify Actor
-    - Create or Modify Requirement
-    - Create or Modify Guardrail
-    owns:
-    - Contour Element
-    - Contour Relationship
-    - Contour Record
-    - Contour Element Version
-    - Contour Definition Version
-    - Contour Requirement
-    - Contour Guardrail
-    produces:
-    - Element Stored
-    - Element Deleted
-    - Requirement Stored
-    - Requirement Deleted
-    - Guardrail Stored
-    - Guardrail Deleted
-    requirements: [Local start composition, Ownership Relations Are Stored, Element Name Is Unique Within Its System]
+    - name: contour-engine
+      description: The Contour System deployable. Stores, validates and searches Contour specifications,
+        exports them as a neutral graph, owns all Contour data, and serves the Modeler's built-in
+        browser Console (the form-based Meanings UI) and the AI Agent's MCP tools from the same
+        runtime. The Console's Functions run in-process over the same core; there is no separate UI
+        product. Performs every Function.
+      rationale:
+        - One Core For Every Actor
+        - "principle 4: data has a home"
+        - Works In A Browser
+      performs:
+        - Store Element
+        - Delete Element
+        - Retrieve Element
+        - Retrieve Elements
+        - Retrieve System Scope
+        - Validate Element
+        - Check Model
+        - Diff Element
+        - Store Requirement
+        - Retrieve Requirement
+        - Delete Requirement
+        - Store Guardrail
+        - Retrieve Guardrail
+        - Delete Guardrail
+        - Search Specifications
+        - Search Requirements
+        - Search Guardrails
+        - Resolve Requirements
+        - Resolve Guardrails
+        - Export Graph
+        - Explore Models
+        - Open Model
+        - Read Element
+        - Save Element
+        - Check Model in View
+        - Define Requirement or Guardrail
+      owns:
+        - Contour Element
+        - Contour Relationship
+        - Contour Record
+        - Contour Element Version
+        - Contour Definition Version
+        - Contour Requirement
+        - Contour Guardrail
+      produces:
+        - Element Stored
+        - Element Deleted
+        - Requirement Stored
+        - Requirement Deleted
+        - Guardrail Stored
+        - Guardrail Deleted
   interfaces:
-  - name: Contour Console
-    description: >-
-      The browser application a Modeler works in: listing, search, element and definition detail with
-      their diagrams, System review, and create, edit and remove. A Web UI binding over the engine's own
-      Functions — the same core the AI Agent reaches through the MCP Server, presented as screens and
-      actions. It exposes only screen Functions (View / Create or Modify, plus Search, Check Model and the
-      Render diagrams); the raw element and definition writes those screens drive are the core Functions
-      they call, reached through the engine, not exposed here. Its browsing, pagination, confirm-before-remove
-      and navigation are binding conventions, not separate Functions.
-    rationale: [Modeler needs, Works In A Browser, One Core For Every Actor]
-    serves: Modeler
-    binding:
-      style: Web UI
-      framework:
-        name: material-ui
-        llm-guide: 'https://mui.com/material-ui/llms.txt'
-        customization: {theme: Dark mode}
-    requirements: [Element View in UI, Diagram layout in UI]
-    exposes:
-    - Check Model
-    - Diff Element
-    - Search Specifications
-    - Search Requirements
-    - Search Guardrails
-    - Render Diagram
-    - View System
-    - View Component
-    - View Interface
-    - View Function
-    - View Event
-    - View Data Object
-    - View Actor
-    - View Requirement
-    - View Guardrail
-    - Create or Modify System
-    - Create or Modify Component
-    - Create or Modify Interface
-    - Create or Modify Function
-    - Create or Modify Event
-    - Create or Modify Data Object
-    - Create or Modify Actor
-    - Create or Modify Requirement
-    - Create or Modify Guardrail
-  - name: Contour MCP Server
-    description: >-
-      Model Context Protocol access for AI Agents, reading and storing Contour specifications as tools.
-    rationale: [AI Agent needs, Reaches The System As Tools]
-    serves: AI Agent
-    binding: {style: MCP, transport: streamable HTTP, auth: agent token}
-    exposes:
-      Store Element:
-        operation: store_element
-        request:
-          element: Contour Element { id?, name, elementType, systemId? }
-          record: Contour Record.body
-          relationships: Contour Relationship { verb, toElementId }[]
-        responses:
-          Stored: {code: result, body: Contour Element}
-          Rejected:
-            code: result
-            body: {violations: 'string[1..]'}
-      Delete Element:
-        operation: delete_element
-        request: {id: uuid}
-        responses: {Deleted: result, Already Absent: result}
-      Retrieve Element:
-        operation: retrieve_element
-        request: {id: uuid}
-        responses:
-          Found:
-            code: result
-            body:
-              element: Contour Element
-              record: Contour Record
-              relationships: >-
-                { id: uuid, verb: Contour Relationship.verb, from: Contour Element { id, name, elementType,
-                systemId }, to: Contour Element { id, name, elementType, systemId } }[]
-          Not Found: error
-      Check Model:
-        operation: check_model
-        request: {systemId: uuid}
-        responses:
-          Checked:
-            code: result
-            body:
-              contradictions: '{ rule: string, finding: string }[]'
-              gaps: '{ rule: string, finding: string, topDown: string, bottomUp: string }[]'
-          System Not Found: error
-      Diff Element:
-        operation: diff_element
-        request: {id: uuid, fromVersion: integer, toVersion: integer}
-        responses:
-          Diffed:
-            code: result
-            body:
-              element: Contour Element { id, name, elementType, systemId }
-              from: integer
-              to: integer
-              fromBody: Contour Record.body
-              toBody: Contour Record.body
-              changes: >-
-                { field: string, verb: Contour Relationship.verb?, kind: enum(added, removed, changed),
-                name: string?, value: object?, implication: string }[]
-          Not Found: error
-          No Such Revision: error
-      Store Requirement:
-        operation: store_requirement
-        request: {id: uuid, name: string, description: string}
-        responses:
-          Stored: {code: result, body: Contour Requirement}
-          Invalid: error
-          Name Taken: error
-      Retrieve Requirement:
-        operation: retrieve_requirement
-        request: {name: string}
-        responses:
-          Found: {code: result, body: Contour Requirement}
-          Not Found: error
-      Delete Requirement:
-        operation: delete_requirement
-        request: {name: string}
-        responses: {Deleted: result, Already Absent: result, Still Referenced: error}
-      Store Guardrail:
-        operation: store_guardrail
-        request: {id: uuid, name: string, description: string}
-        responses:
-          Stored: {code: result, body: Contour Guardrail}
-          Invalid: error
-          Name Taken: error
-      Retrieve Guardrail:
-        operation: retrieve_guardrail
-        request: {name: string}
-        responses:
-          Found: {code: result, body: Contour Guardrail}
-          Not Found: error
-      Delete Guardrail:
-        operation: delete_guardrail
-        request: {name: string}
-        responses: {Deleted: result, Already Absent: result, Still Referenced: error}
-      Search Specifications:
-        operation: search_specifications
-        request:
-          query: string?
-          elementType: Contour Element.elementType?
-          name: string?
-          exactName: string?
-          systemId: uuid?
-          componentId: uuid?
-          page: integer?
-          pageSize: integer?
-        responses:
-          Found:
-            code: result
-            body: {items: 'Contour Element { id, name, elementType }[]', total: integer}
-      Search Requirements:
-        operation: search_requirements
-        request: {query: string}
-        responses:
-          Found: {code: result, body: 'Contour Requirement[]'}
-      Search Guardrails:
-        operation: search_guardrails
-        request: {query: string}
-        responses:
-          Found: {code: result, body: 'Contour Guardrail[]'}
-      Render Diagram:
-        operation: render_diagram
-        request: {id: uuid}
-        responses:
-          Rendered:
-            code: result
-            body: {likec4: string}
-          Not Found: error
+    - name: Contour MCP Server
+      description: Model Context Protocol access for AI Agents, reading and storing Contour specifications
+        as tools.
+      serves: AI Agent
+      binding:
+        auth: agent token
+        style: MCP
+        transport: streamable HTTP
+      exposes:
+        Check Model:
+          request:
+            systemId: uuid
+          operation: check_model
+          responses:
+            Checked:
+              body:
+                gaps: "{ rule: string, finding: string, topDown: string, bottomUp: string }[]"
+                contradictions: "{ rule: string, finding: string }[]"
+              code: result
+            System Not Found: error
+        Diff Element:
+          request:
+            id: uuid
+            toVersion: integer
+            fromVersion: integer
+          operation: diff_element
+          responses:
+            Diffed:
+              body:
+                to: integer
+                from: integer
+                toBody: Contour Record.body
+                changes: "{ field: string, verb: Contour Relationship.verb?, kind: enum(added, removed, changed),
+                  name: string?, value: object?, implication: string }[]"
+                element: Contour Element { id, name, elementType, systemId }
+                fromBody: Contour Record.body
+              code: result
+            Not Found: error
+            No Such Revision: error
+        Export Graph:
+          request:
+            id: uuid
+          operation: export_graph
+          responses:
+            Exported:
+              body:
+                graph:
+                  edges: "{ from: uuid, to: uuid, verb: Contour Relationship.verb, label: string, ordinal: integer?
+                    }[]"
+                  nodes: "{ id: uuid, elementType: Contour Element.elementType, name: string, systemId: uuid?,
+                    summary: string? }[]"
+              code: result
+            Not Found: error
+        Store Element:
+          request:
+            record: Contour Record.body
+            element: Contour Element { id?, name, elementType, systemId? }
+            relationships: Contour Relationship { verb, toElementId }[]
+          operation: store_element
+          responses:
+            Stored:
+              body: Contour Element
+              code: result
+            Rejected:
+              body:
+                violations: string[1..]
+              code: result
+        Delete Element:
+          request:
+            id: uuid
+          operation: delete_element
+          responses:
+            Deleted: result
+            Already Absent: result
+        Store Guardrail:
+          request:
+            id: uuid
+            name: string
+            description: string
+          operation: store_guardrail
+          responses:
+            Stored:
+              body: Contour Guardrail
+              code: result
+            Invalid: error
+            Name Taken: error
+        Delete Guardrail:
+          request:
+            name: string
+          operation: delete_guardrail
+          responses:
+            Deleted: result
+            Already Absent: result
+            Still Referenced: error
+        Retrieve Element:
+          request:
+            id: uuid
+          operation: retrieve_element
+          responses:
+            Found:
+              body:
+                record: Contour Record
+                element: Contour Element
+                relationships: "{ id: uuid, verb: Contour Relationship.verb, from: Contour Element { id, name,
+                  elementType, systemId }, to: Contour Element { id, name, elementType, systemId }
+                  }[]"
+              code: result
+            Not Found: error
+        Retrieve Elements:
+          request:
+            ids: uuid[]
+          operation: retrieve_elements
+          responses:
+            Found:
+              body: "{ element: Contour Element, record: Contour Record, relationships: { id: uuid, verb: Contour
+                Relationship.verb, from: Contour Element { id, name, elementType, systemId }, to:
+                Contour Element { id, name, elementType, systemId } }[] }[]"
+              code: result
+        Search Guardrails:
+          request:
+            query: string
+          operation: search_guardrails
+          responses:
+            Found:
+              body: Contour Guardrail[]
+              code: result
+        Store Requirement:
+          request:
+            id: uuid
+            name: string
+            description: string
+          operation: store_requirement
+          responses:
+            Stored:
+              body: Contour Requirement
+              code: result
+            Invalid: error
+            Name Taken: error
+        Delete Requirement:
+          request:
+            name: string
+          operation: delete_requirement
+          responses:
+            Deleted: result
+            Already Absent: result
+            Still Referenced: error
+        Resolve Guardrails:
+          request:
+            names: string[]
+          operation: resolve_guardrails
+          responses:
+            Resolved:
+              body: Contour Guardrail[]
+              code: result
+        Retrieve Guardrail:
+          request:
+            name: string
+          operation: retrieve_guardrail
+          responses:
+            Found:
+              body: Contour Guardrail
+              code: result
+            Not Found: error
+        Search Requirements:
+          request:
+            query: string
+          operation: search_requirements
+          responses:
+            Found:
+              body: Contour Requirement[]
+              code: result
+        Resolve Requirements:
+          request:
+            names: string[]
+          operation: resolve_requirements
+          responses:
+            Resolved:
+              body: Contour Requirement[]
+              code: result
+        Retrieve Requirement:
+          request:
+            name: string
+          operation: retrieve_requirement
+          responses:
+            Found:
+              body: Contour Requirement
+              code: result
+            Not Found: error
+        Retrieve System Scope:
+          request:
+            systemId: uuid
+          operation: retrieve_system_scope
+          responses:
+            Retrieved:
+              body:
+                system: Contour Element { id, name, elementType }
+                elements: "{ id: uuid, name: string, elementType: Contour Element.elementType, uses: string[],
+                  requirements: string[], guardrails: string[] }[]"
+              code: result
+            System Not Found: error
+        Search Specifications:
+          request:
+            name: string?
+            page: integer?
+            query: string?
+            pageSize: integer?
+            systemId: uuid?
+            exactName: string?
+            componentId: uuid?
+            elementType: Contour Element.elementType?
+          operation: search_specifications
+          responses:
+            Found:
+              body:
+                items: Contour Element { id, name, elementType }[]
+                total: integer
+              code: result
+      rationale:
+        - AI Agent needs
+        - Reaches The System As Tools
+    - name: Meanings UI
+      description: "The engine's built-in browser Console: a form-based, three-pane Modeler editor — a
+        model tree, a per-kind editor for the selected element, and an inspector that shows what is
+        wrong and what is still to fill in. The Modeler explores, opens, reads, edits, saves and
+        checks Contour models here, each element edited through fields shaped for its kind rather
+        than drawn on a canvas. A Web UI binding over the engine's own Functions, served in-process
+        from the same runtime as the core and the MCP Server. The full design — shell, dark-theme
+        Roboto tokens, per-kind editor bodies and interaction conventions — is carried inline in
+        this Interface's binding (designSystem, shell, tree, perKind, conventions); the React
+        components under src/ui replicate it (theme.js holds the tokens, styles.css the global
+        chrome)."
+      serves: Modeler
+      binding:
+        tree: "Every Contour System is a root node, expanded progressively (collapsed by default). Each
+          expandable row has two click targets: a chevron (› rotating 0°→90°) that toggles
+          expand/collapse, and the label that selects the element (opens its editor) and opens its
+          branch (never collapses — only the chevron collapses). System → its Actors plus four
+          always-present group nodes (Data Objects, Events, Requirements, Guardrails), each showing
+          a count. Actor → the Functions it uses. Group node → its members. Leaves (Function, Data
+          Object, Event, Requirement, Guardrail) have no chevron; clicking only selects. Every
+          actionable row carries a status dot (green complete / amber has gaps / red wrong); a
+          System's dot is the worst of everything under it. Each expanded branch ends with a '+ Add'
+          row; a legend and '+ New System' sit at the foot."
+        view: Business view
+        shell: "Three panes under a top bar. Top bar: Contour mark and product name, a breadcrumb trail
+          (System › Actor › element), a right-aligned 'Check model' button showing live
+          contradictions/gaps counts, and a 'Business view' badge. Left: Tree (280px). Center:
+          Editor (flex, per kind). Right: Inspector (320px)."
+        style: Web UI
+        layout: "Three panes under a top bar: model tree (left, 280px), per-kind form editor (center, flex),
+          inspector (right, 320px)."
+        perKind:
+          Actor: A Uses list of the Functions the Actor uses (each a row with a status dot, opening that
+            Function), plus '+ New Function for this Actor'.
+          System: "Four count cards: Actors, Functions, Data Objects, Events."
+          Function: "Steps (ordered main path: one verb consumes/calls/uses/reads/modifies/produces + one
+            target; verb dropdown shows the bare verb, the target dropdown is scoped to what that
+            verb may reach — calls to a same-Component Function, uses to Interface/Function grouped
+            by System own-first, reads/modifies to a Data Object, produces/consumes to an Event).
+            Outcome mapping (becomes): resolves the actual target Function and offers its real
+            outcomes (result + alternatives), plus Unreachable for uses; each maps to one of this
+            Function's own outcomes, unmapped continues the main path. Outcomes: the main result
+            (green) and named alternatives (amber) with a plain-language when and optional effects.
+            Business rules: behavior prose. Data it touches: chips derived from reads/modifies. A
+            Form/Diagram toggle switches the editor body to a read-only Diagram View of the
+            element's graph (see conventions)."
+          DataObject/Event: "A schema editor in Contour core type notation (basic, enum, Data Object ref,
+            nested type, projection, inline shape, list []/[1..], optional ?), with a live 'As
+            written in Contour' preview, or a link to an external spec (AsyncAPI/JSON Schema/Avro).
+            Nested/embedded objects render as their own separate block — the root shape first, then
+            every named nested type (Owner.Type) and every anonymous inline { … } shape as its own
+            labelled block — the same decomposition editing and viewing. A field typed as such a
+            shape shows the reference, not an inlined tree. Render-only: the stored form stays the
+            flat object mapping each field name to its type-notation string (or a string/link),
+            parsed into blocks and written back verbatim, so records round-trip without rewriting an
+            inline shape into a named type unless the modeler names it."
+          Requirement/Guardrail: Name + description definition editors (defined once, referenced by name from
+            any element).
+        framework:
+          name: React
+          runtime: NodeJS 22.x
+          version: 19.x
+        conventions: "Tree navigation with two click targets per expandable row (chevron toggles, label
+          selects+opens). Inline-editable name, kind-specific description, and (for non-definitions)
+          a Requirements + Guardrails panel; a Save bar at the foot writes through to the core.
+          Status per element: green complete, amber has gaps, red contradicts; gaps never block a
+          save (incomplete is not invalid). The inspector shows WRONG: CONTRADICTS THE MODEL (red),
+          STILL TO FILL IN (amber gaps), and a references panel (USED BY / APPLIES TO / USED BY
+          FUNCTIONS). The top bar's Check model is the core's authoritative verdict, shown next to
+          the editor's instant local hints. Confirm-before-remove. Names resolve within the System;
+          a step or attachment refers to another element by name, never by id. A Data Object's or
+          Event's schema is rendered as separate blocks (root first, then each nested/inline shape
+          as its own block) — the same decomposition when editing and when viewing. For
+          non-definition elements a Form/Diagram toggle switches the center pane to a read-only
+          Diagram View of the element's graph. The Diagram View has zoom, fit and full-screen
+          controls: zoom in, zoom out, reset to 100%, fit-to-view (scale and centre the whole
+          diagram), and expand to full screen (and back); the Modeler can also drag to pan when the
+          diagram overflows its frame. Wheel zoom is smooth and eased — proportional to the scroll
+          amount, not a fixed jump — and keeps the point under the pointer fixed. Dragging to pan
+          never selects the diagram's label text (text selection is suppressed on the diagram
+          surface, and any selection a drag starts is cleared), so panning stays clean. The view
+          opens with nothing highlighted; selecting a node highlights that node and its downstream
+          path — following the relationships in their direction, in full depth (the transitive
+          closure of outgoing edges), each reached node and the edge reaching it at full strength,
+          nothing dimmed. Upstream nodes that point at the selected one are not highlighted. A
+          single click (press and release without dragging) is what selects a node or, on empty
+          canvas, clears the selection; clicking the selected node again also clears it. Zoom, pan,
+          full screen and highlight are presentation over the graph the engine already returned —
+          they re-derive no structure and make no further engine call."
+        designSystem:
+          font: Roboto (400/500/700), system-ui fallback; monospace (ui-monospace, Menlo, Consolas) for the
+            schema notation preview
+          theme: Dark mode
+          radius: 4px on controls/cards, 16–18px on chips/badges, 50% on icon buttons
+          tokens:
+            red: "#e57373 (wrong / contradicts)"
+            text: "#ffffff (primary)"
+            amber: "#ffa726 (has gaps)"
+            green: "#66bb6a (complete)"
+            panel: "#1e1e1e (cards, grouped field blocks)"
+            accent: "#90caf9 (links, selection, Contour mark, Requirement chips, highlighted diagram node/edge)"
+            purple: "#ce93d8 (Guardrail chips)"
+            topBar: "#272727 (header)"
+            textDim: rgba(255,255,255,0.7) (labels, secondary)
+            hairline: rgba(255,255,255,0.12) (borders)
+            background: "#121212 (app, sidebars)"
+            inputBorder: rgba(255,255,255,0.23) (field outlines)
+          styling: Hand-built inline design tokens (no component library); tokens in src/ui/theme.js, global
+            chrome in src/ui/styles.css
+          controls: 40px tall single-line, 36px in dense rows; floating labels sit on the field border on the
+            panel/background colour; the Diagram View's zoom/fit/full-screen controls are a small
+            cluster of icon buttons overlaid on the diagram frame
+      exposes:
+        - Explore Models
+        - Open Model
+        - Read Element
+        - Save Element
+        - Check Model in View
+        - Define Requirement or Guardrail
+      rationale:
+        - Modeler needs
+        - Works In A Browser
+        - Readable By Business Users
+        - Reaches The System As A Console
+  functions:
+    - name: Check Model
+      description: Checks one stored System — the System and everything that belongs to it — and reports
+        what is wrong with it separately from what is not filled in yet.
+      steps:
+        - reads: Contour Element
+        - reads: Contour Relationship
+        - reads: Contour Record
+        - reads: Contour Requirement
+        - reads: Contour Guardrail
+      result: Checked
+      alternatives:
+        System Not Found: No System has this id.
+      behavior: "Reports contradictions — wrong however the model was started — and gaps — not filled in
+        yet — in two separate lists. Every gap carries its next step from each direction: top-down,
+        from the Actors and the Functions they use, and bottom-up, from the Components and
+        Interfaces found in code. A model System with gaps and no contradictions is a model in
+        progress, not an invalid one. Covers what element-scope validation can't decide: allocation
+        coverage, Actor uses against what the Interfaces serving it expose, Interfaces serving
+        System against the uses steps that call them, rationale, and uses steps against the
+        neighbour Systems its edges reach."
+      requirements:
+        - Enforce Contour Invariants
+        - Report Gaps For Both Directions
+      guardrails:
+        - Read-only function
+    - name: Check Model in View
+      description: Shows the core's authoritative verdict for the System currently in view — what is wrong
+        (contradictions) kept separate from what is simply not filled in yet (gaps). The Modeler
+        asks for it from the top bar; it is the authority behind the instant local hints shown while
+        editing.
+      steps:
+        - calls: Check Model
+          becomes:
+            System Not Found: No Such System
+      result: Checked
+      alternatives:
+        No Such System: No System has this id.
+      behavior: Triggered on demand from the top bar's Check model button for the System currently in view
+        — not run live while editing. The editor also shows instant local hints as the Modeler
+        types, but those are only hints; this Function returns the core's authoritative verdict,
+        keeping contradictions separate from gaps.
+      requirements:
+        - Readable By Business Users
+      guardrails:
+        - Presents The Model It Never Invents
+    - name: Define Requirement or Guardrail
+      description: Authors the record-tier Requirement and Guardrail definitions a Modeler attaches to
+        elements in the editor — naming the obligation or boundary and its description — and stores
+        them through the core so any element can reference them by name.
+      steps:
+        - calls: Store Requirement
+          becomes:
+            Invalid: Invalid
+            Name Taken: Name Taken
+        - calls: Store Guardrail
+          becomes:
+            Invalid: Invalid
+            Name Taken: Name Taken
+      result: Defined
+      alternatives:
+        Invalid:
+          when: The name or description was blank; nothing is saved.
+        Name Taken:
+          when: Another definition of the same kind already has this name.
+      behavior: Defines the record-tier Requirement and Guardrail definitions a Modeler attaches to
+        elements in the form editor — naming the obligation or boundary and its description — and
+        stores them through the core. A definition is created or updated by name; attaching it to an
+        element is part of that element's own Save, not this Function. The editor offers no way to
+        delete a definition.
+      requirements:
+        - Readable By Business Users
+      guardrails:
+        - Writes Go Through Contour
+    - name: Delete Element
+      description: Removes one stored element, its record, and every relationship where it is either
+        endpoint, and announces the removal.
+      steps:
+        - modifies: Contour Relationship
+        - modifies: Contour Record
+        - modifies: Contour Element
+        - produces: Element Deleted
+      result: Deleted
+      alternatives:
+        Already Absent: No such item exists; nothing is deleted.
+      requirements:
+        - Element Write Is Atomic
+    - name: Delete Guardrail
+      description: Removes one Guardrail definition and announces the removal.
+      steps:
+        - reads: Contour Record
+        - modifies: Contour Guardrail
+        - produces: Guardrail Deleted
+      result: Deleted
+      alternatives:
+        Already Absent: No such item exists; nothing is deleted.
+        Still Referenced: A stored element still references it; the delete is refused.
+      requirements:
+        - Definition Write Is Atomic
+      guardrails:
+        - Referenced Definitions Must Exist
+    - name: Delete Requirement
+      description: Removes one Requirement definition and announces the removal.
+      steps:
+        - reads: Contour Record
+        - modifies: Contour Requirement
+        - produces: Requirement Deleted
+      result: Deleted
+      alternatives:
+        Already Absent: No such item exists; nothing is deleted.
+        Still Referenced: A stored element still references it; the delete is refused.
+      requirements:
+        - Definition Write Is Atomic
+      guardrails:
+        - Referenced Definitions Must Exist
+    - name: Diff Element
+      description: "Compares two stored revisions of one element — a System included, since a System is
+        itself an element with its own record — and returns a typed delta, what changed in the
+        record keyed by the record's own fields and relationships, rather than a line-by-line text
+        diff. The caller a change agent reaches for first: it answers \"what in this record is
+        different now.\""
+      steps:
+        - reads: Contour Element
+        - reads: Contour Record
+        - reads: Contour Element Version
+      result: Diffed
+      alternatives:
+        Not Found: No element has this id.
+        No Such Revision: One or both of the requested versions were never recorded for this element.
+      behavior: "Reads the \"before\" body from Contour Element Version at the requested from-version (the
+        live record when the to-version is current) and the \"after\" body at the to-version, then
+        computes a delta keyed by the record's own vocabulary. Which fields a change can touch
+        depends on the element's type, since a System is itself an element with its own record: a
+        System's description, groups, requirements and guardrails; a Component's performs, owns,
+        produces and rationale; an Interface's serves, binding and exposes; a Function's steps,
+        result, alternatives and behavior; a Data Object's or Event's schema — and requirements and
+        guardrails on any of them. Each change names the record field or relationship verb it
+        touches, whether it was added, removed or changed, and the value. Each change also carries
+        an implication, derived from the same Contour invariants Validate Element and Check Model
+        enforce, that names which consistency check or obligation the change puts at risk — a new
+        Function alternative needs a response mapping in every exposing Interface and a test; a
+        changed performs may split a calls edge across Components; a System gaining a groups entry
+        is a new Component to allocate; an added requirement or guardrail reference becomes an
+        obligation to grade against. The from and to bodies are returned alongside the delta so the
+        delta needs no second lookup. Reads only; it records nothing."
+      requirements:
+        - Record History Is Kept
+        - Delta Is Typed And Field Keyed
+        - Delta States Code Implications
+      guardrails:
+        - Read-only function
+    - name: Explore Models
+      description: Lets a user find and browse the Contour Systems and their elements — by name, type or
+        free text — as a starting point for reading or changing a model.
+      steps:
+        - calls: Search Specifications
+      result: Listed
+      requirements:
+        - Readable By Business Users
+        - Works In A Browser
+    - name: Export Graph
+      description: "Projects one stored element to a neutral, notation-free graph — nodes and edges
+        carrying Contour semantics, not a drawn picture: given a System, the whole-System graph;
+        given a Function, a step-ordered, depth-resolved Function View (the focus with its callers
+        and its steps resolved through the functions it calls/uses); given any other element, a
+        graph scoped to that element and every relationship where it is either endpoint. A consumer
+        (the Meanings System, an ArchiMate exporter, an LLM) turns the graph into views; the engine
+        draws nothing and names no notation. One-way and lossy (Contour §4): nothing is read back
+        from the exported graph."
+      steps:
+        - reads: Contour Element
+        - reads: Contour Relationship
+        - reads: Contour Record
+      result: Exported
+      alternatives:
+        Not Found: No element has this id.
+      behavior: "Looks the element up by id and branches on its type. For a System: every element scoped
+        to the System becomes a node and every relationship among them becomes an edge, with the
+        half-open neighbour Systems its edges reach; allocation (groups, performs, owns) is carried
+        as edges, not collapsed into nesting, and produces/consumes are carried as edges so an Event
+        reads as a flow hub — the consumer decides what to nest or hide. For a Function: a
+        step-ordered, depth-resolved Function View — the focus Function as a node, the Actors or
+        Functions that invoke it (its inbound 'uses'/'calls' callers) as nodes with their caller
+        edges, and the Function's own steps carried as step edges tagged with their 1-based position
+        in the record's steps[] (matched to a relation by verb AND target together, so two steps to
+        one target via different verbs keep distinct ordinals and never swap). Each step that
+        'calls' or 'uses' another Function resolves that target in depth: the target Function is
+        included carrying only its own ordered step edges — none of its callers, performs or exposes
+        — and resolution recurses until a Function invokes no further Function (a cycle is entered
+        at most once). For any other element: that element and every relationship where it is either
+        endpoint, with the neighbour at the other end of each edge. Each node carries its id, its
+        Contour element type, its name and a one-line summary from its record (an element's
+        description, or an Interface's binding style); each edge carries its endpoints, its Contour
+        relationship verb and a label (the verb, or for a uses edge the Interface that carries it),
+        and — on a Function View's step edge — its ordinal. The graph names element types and
+        relationship verbs in Contour's own vocabulary and assigns no shapes, colours or layout —
+        notation is the consumer's (§4); the ordinal is a stored-state fact (the step's index in the
+        record), not notation. Everything in the graph derives from stored state; a reference that
+        resolves to nothing is simply absent, never an error."
+      requirements:
+        - Graph Carries Contour Semantics
+        - Nodes Carry Their Own Summary
+        - Function View Is Step-Ordered And Depth-Resolved
+      guardrails:
+        - Read-only function
+        - Graph Export Is One-Way And Lossy
+        - Graph Derives Only From Stored State
+        - Gaps Never Block An Export
+    - name: Open Model
+      description: Opens one Contour System in the Modeler and builds its left-pane navigation tree — the
+        System and the elements that belong to it, nested as Actors with the Functions they use plus
+        the System's Data Objects, Events, Requirements and Guardrails. The tree is a light index
+        only; the Requirement/Guardrail definitions it references are resolved in one batch call
+        each, and a full record is loaded one element at a time by Read Element.
+      steps:
+        - calls: Search Specifications
+        - calls: Retrieve System Scope
+          becomes:
+            System Not Found: No Such System
+        - calls: Resolve Requirements
+        - calls: Resolve Guardrails
+      result: Opened
+      alternatives:
+        No Such System: The System to open no longer exists.
+      behavior: Lists the Systems with Search Specifications to seed the tree, then opens each System by
+        reading its whole scope in a single call — Retrieve System Scope — rather than one read per
+        element. That light, bounded response carries every element's id, name, kind and the
+        reference lists the tree nests by (an Actor's and Function's uses, each element's
+        requirements and guardrails). The Requirement and Guardrail definitions those lists
+        reference are then resolved in two batch calls — Resolve Requirements and Resolve
+        Guardrails, one set-membership query each — not one Search per name, so opening a model
+        issues a fixed, small number of requests. Opening an element loads its full record
+        separately through Read Element.
+      requirements:
+        - Readable By Business Users
+        - Works In A Browser
+        - Tree Loads Without Per-Element Fetches
+        - Definitions Resolve In One Query
+    - name: Read Element
+      description: Loads one element's full record and relationships into the Modeler's editor form — the
+        detail the light navigation tree does not carry — and hydrates the bounded cross-reference
+        set the inspector checks on open. Additionally loads the graph for the selected element and
+        renders it in Diagram View using the Mermaid rendering tool, where the Modeler can zoom,
+        fit, pan and full-screen the diagram and select a node to highlight its downstream path.
+      steps:
+        - calls: Retrieve Element
+          becomes:
+            Not Found: No Such Element
+        - calls: Retrieve Elements
+        - calls: Export Graph
+          becomes:
+            Not Found: No Such Element
+      result: Read
+      alternatives:
+        No Such Element:
+          when: No element has this id.
+      behavior: "Runs whenever the Modeler selects an element in the tree, a breadcrumb or a reference
+        chip. Opening an element loads its full record and relationships, then hydrates its
+        cross-reference set — the bounded set of neighbour elements the inspector needs to run its
+        checks on open (an Actor's used Functions; the Functions that touch an opened Data Object or
+        Event) — in one batch call, Retrieve Elements, rather than eagerly loading every element of
+        the System. Diagram rendering for Functions draws only Actors or Functions that invoke it
+        and numbered 'steps' for Function View; each step that calls or uses another Function
+        resolves that target in depth until it invokes no further Function; target Functions are
+        rendered alone with only 'steps' relations. Step numbers follow the record's step order and
+        are matched to the diagram's relations by verb AND target together, so two steps to the same
+        target with different verbs each keep their own number. The Diagram View is pannable and
+        zoomable: the Modeler can zoom in and out, reset to 100%, fit the whole diagram to the view,
+        drag to pan when the diagram overflows, and expand the diagram to full screen (and back).
+        The view opens with nothing highlighted; selecting a node highlights that node and its
+        downstream path — following the relationships in their direction, in full depth (the
+        transitive closure of outgoing edges), highlighting each reached node and the edge that
+        reaches it at full strength without dimming the rest. Upstream neighbours (the nodes that
+        point at the selected one, such as a Function's callers) are not highlighted. Selecting the
+        node again, or the empty canvas, clears the highlight. Zoom, pan, full screen and in-diagram
+        selection are presentation over the already-fetched graph — they re-derive no structure, add
+        no model content, and make no further call to the engine."
+      requirements:
+        - Readable By Business Users
+        - Works In A Browser
+        - Nothing is saved until Save button is pressed
+        - Elements Load In Bounded Queries
+      guardrails:
+        - Presents The Model It Never Invents
+    - name: Resolve Guardrails
+      description: Returns the Guardrail definitions whose names are in a given set, in one bounded query
+        (name = ANY(names)) — for a caller that already knows which definitions a model references
+        and needs their full definitions at once, such as the Console resolving the Guardrails a
+        System's tree nests by. Names with no matching definition are simply absent from the result,
+        never an error.
+      steps:
+        - reads: Contour Guardrail
+      result: Resolved
+      behavior: Reads Contour Guardrail once with a single set-membership query over the given names, not
+        one lookup per name. Returns each matched definition (id, name, description, version). An
+        empty name set returns nothing; an unmatched name is omitted (a gap, not an error). Reads
+        only; it records nothing.
+      requirements:
+        - Definitions Resolve In One Query
+      guardrails:
+        - Read-only function
+        - Proper field indexes
+    - name: Resolve Requirements
+      description: Returns the Requirement definitions whose names are in a given set, in one bounded
+        query (name = ANY(names)) — for a caller that already knows which definitions a model
+        references and needs their full definitions at once, such as the Console resolving the
+        Requirements a System's tree nests by. Names with no matching definition are simply absent
+        from the result, never an error.
+      steps:
+        - reads: Contour Requirement
+      result: Resolved
+      behavior: Reads Contour Requirement once with a single set-membership query over the given names,
+        not one lookup per name. Returns each matched definition (id, name, description, version).
+        An empty name set returns nothing; an unmatched name is omitted (a gap, not an error). Reads
+        only; it records nothing.
+      requirements:
+        - Definitions Resolve In One Query
+      guardrails:
+        - Read-only function
+        - Proper field indexes
+    - name: Retrieve Element
+      description: Returns one stored element by id — its record plus its immediate relationships,
+        outgoing and incoming — not the whole model.
+      steps:
+        - reads: Contour Element
+        - reads: Contour Relationship
+        - reads: Contour Record
+      result: Found
+      alternatives:
+        Not Found: No element has this id.
+      guardrails:
+        - Read-only function
+    - name: Retrieve Elements
+      description: Returns the full records — element, record body and immediate relationships — of the
+        elements whose ids are in a given set, in one bounded call (id = ANY(ids)). For a caller
+        that already knows which elements it needs the full detail of and wants them at once, such
+        as the Console hydrating the cross-reference set of an opened element (an Actor's used
+        Functions, or the Functions that touch an opened Data Object or Event) so the inspector can
+        run its checks on open. Ids with no matching element are simply absent from the result.
+      steps:
+        - reads: Contour Element
+        - reads: Contour Relationship
+        - reads: Contour Record
+      result: Found
+      behavior: Reads Contour Element, Contour Record and Contour Relationship for the given ids in a
+        bounded number of queries — the elements in one, their records in one, their relationships
+        in one — never one round-trip per element. Returns, per found element, the same shape
+        Retrieve Element returns (element summary, record body, and immediate relationships with
+        both endpoints summarised). An id with no element is simply absent from the result, never an
+        error; an empty id set returns nothing without querying. Reads only; it records nothing.
+      requirements:
+        - Elements Load In Bounded Queries
+      guardrails:
+        - Read-only function
+        - Proper field indexes
+    - name: Retrieve Guardrail
+      description: Returns one Guardrail definition by name.
+      steps:
+        - reads: Contour Guardrail
+      result: Found
+      alternatives:
+        Not Found: No Guardrail has this name.
+      guardrails:
+        - Read-only function
+    - name: Retrieve Requirement
+      description: Returns one Requirement definition by name.
+      steps:
+        - reads: Contour Requirement
+      result: Found
+      alternatives:
+        Not Found: No Requirement has this name.
+      guardrails:
+        - Read-only function
+    - name: Retrieve System Scope
+      description: "Returns a light index of one System's scope — the System itself and every element that
+        belongs to it — for a caller building the System's navigation tree. Each entry is the
+        element's summary (id, name, element type) plus only the reference lists the tree reads: a
+        Function's and Actor's uses, and any element's requirements and guardrails. It carries no
+        full record body, no steps, schema or behavior, and no relationships — those are fetched one
+        element at a time by Retrieve Element when an element is opened. The point is the batch: a
+        whole System's tree is read in one call and a bounded number of queries, replacing one
+        Retrieve Element per element."
+      steps:
+        - reads: Contour Element
+        - reads: Contour Record
+      result: Retrieved
+      alternatives:
+        System Not Found: No System has this id; nothing is returned.
+      behavior: "Resolves the System by id (a System is its own scope: COALESCE(system_id, id) folds the
+        System row into its own scope), then reads every element in that scope and its record in a
+        fixed number of queries — the elements in one query and their records in one more — never
+        one query per element. For each element it projects the summary (id, name, elementType) and,
+        from the record body, only the name-reference lists the tree needs: uses (Functions an Actor
+        uses, and a Function's uses steps' targets), requirements and guardrails. A reference that
+        resolves to nothing is carried as the bare name, a gap, never an error. It returns no full
+        body and no relationships; a caller that needs an element's full record calls Retrieve
+        Element for that one element. Reads only; it records nothing."
+      requirements:
+        - Scope Retrieval Is Bounded
+      guardrails:
+        - Read-only function
+        - Proper field indexes
+    - name: Save Element
+      description: Writes one element the Modeler has edited back to the core — its name, description and
+        kind-specific body (a Function's steps and outcomes, a Data Object's or Event's schema, the
+        Requirements and Guardrails attached to it). Creates the element when it is new and updates
+        it in place when it already exists. The core validates the write on save; gaps are allowed
+        through, only a contradiction is refused.
+      steps:
+        - calls: Store Element
+          becomes:
+            Rejected: Rejected
+      result: Saved
+      alternatives:
+        Rejected: The core rejected the element — it contradicts the metamodel or persisted state; nothing
+          is saved and the reasons are shown. Gaps alone never cause this.
+      behavior: "The one write path for an element. The editor builds the element's record from the form —
+        for a Function its steps, outcomes and behavior; for a Data Object or Event its schema; plus
+        each kind's attached Requirements and Guardrails — and calls Store Element. When the element
+        is new it is created; when it already exists it is updated in place. Relationship edges
+        (ownership, steps, exposes) are left for the core to derive from the record, so the editor
+        sends none. There is no preview or diff step before committing: the core validates on save,
+        and gaps never block it — only a contradiction is Rejected. A successful save re-reads the
+        affected System so the tree and hints reflect the change."
+      requirements:
+        - Actionable By Developers
+        - Readable By Business Users
+      guardrails:
+        - Writes Go Through Contour
+    - name: Search Guardrails
+      description: Finds Guardrail definitions by free text over their name and description.
+      steps:
+        - reads: Contour Guardrail
+      result: Found
+      requirements:
+        - Uses full-text search
+      guardrails:
+        - Proper field indexes
+        - Read-only function
+    - name: Search Requirements
+      description: Finds Requirement definitions by free text over their name and description.
+      steps:
+        - reads: Contour Requirement
+      result: Found
+      requirements:
+        - Uses full-text search
+      guardrails:
+        - Proper field indexes
+        - Read-only function
+    - name: Search Specifications
+      description: Finds stored elements by free text over their records and by structural filters —
+        element type, part of a name or a whole name, the System it belongs to (the System included)
+        or the Component it is allocated to — one page at a time.
+      steps:
+        - reads: Contour Element
+        - reads: Contour Record
+      result: Found
+      behavior: "Returns one page of matches, by relevance for a text query and by name otherwise, with
+        the total count. Element-scoped: definitions are searched by Search Requirements and Search
+        Guardrails."
+      requirements:
+        - Uses full-text search
+      guardrails:
+        - Proper field indexes
+        - Read-only function
+    - name: Store Element
+      description: Accepts one Contour element — its record and the relationships where it is the "from"
+        side — validates it, persists it, and announces the change.
+      steps:
+        - calls: Validate Element
+          becomes:
+            Invalid: Rejected
+        - modifies: Contour Element Version
+        - modifies: Contour Element
+        - modifies: Contour Relationship
+        - modifies: Contour Record
+        - produces: Element Stored
+      result: Stored
+      alternatives:
+        Rejected: The element contradicts the Contour metamodel or persisted state; nothing is stored.
+      behavior: "Upserts the element row, its record body and its outgoing edges in a single transaction.
+        Before validating, it brings the record's references and the outgoing edges into agreement
+        both ways: every name the record lists — a System's groups, a Component's performs, owns and
+        produces, an Interface's exposes, an Actor's uses, a Function's step and alternative-effect
+        targets — that resolves within the element's System becomes an edge (a uses step through the
+        Interface it names, which may be a neighbour's), and every outgoing edge of a name-list verb
+        is listed in the record. A Function's steps are never rewritten from edges, because order
+        lives only in the steps. A name that resolves to nothing stays as it is, a gap. When the
+        write updates an element that already exists, the record body it is replacing is first
+        copied, at its current version number, into Contour Element Version — an append-only
+        snapshot — so that the prior revision is kept and Diff Element has a \"before\" to compare
+        against; the live row then advances to the next version. The change note the caller gives
+        and which Interface wrote it are kept on the snapshot."
+      requirements:
+        - Element Write Is Atomic
+        - Element Must Be Well Formed
+        - Ownership Relations Are Stored
+        - Element Name Is Unique Within Its System
+        - Record History Is Kept
+      guardrails:
+        - Validation Precedes Persistence
+        - Gaps Never Block A Write
+        - History Is Append Only
+    - name: Store Guardrail
+      description: Accepts one Guardrail definition — id, name and description — validates it, persists
+        it, and announces the change.
+      steps:
+        - modifies: Contour Definition Version
+        - modifies: Contour Guardrail
+        - produces: Guardrail Stored
+      result: Stored
+      alternatives:
+        Invalid: The name or description is blank.
+        Name Taken: Another Guardrail already has this name.
+      behavior: When the write updates a Guardrail that already exists, its current description is first
+        copied, at its current version number, into Contour Definition Version before the live row
+        advances — so a Guardrail a change must be graded against can itself be diffed when its
+        boundary text changes.
+      requirements:
+        - Definition Write Is Atomic
+        - Definition Name Is Unique
+        - Record History Is Kept
+      guardrails:
+        - History Is Append Only
+    - name: Store Requirement
+      description: Accepts one Requirement definition — id, name and description — validates it, persists
+        it, and announces the change.
+      steps:
+        - modifies: Contour Definition Version
+        - modifies: Contour Requirement
+        - produces: Requirement Stored
+      result: Stored
+      alternatives:
+        Invalid: The name or description is blank.
+        Name Taken: Another Requirement already has this name.
+      behavior: When the write updates a Requirement that already exists, its current description is first
+        copied, at its current version number, into Contour Definition Version before the live row
+        advances — so a Requirement a change is graded against can itself be diffed, which is what
+        tells a change agent that every element referencing it may need re-verification.
+      requirements:
+        - Definition Write Is Atomic
+        - Definition Name Is Unique
+        - Record History Is Kept
+      guardrails:
+        - History Is Append Only
+    - name: Validate Element
+      description: Checks one submitted element and its outgoing relationships against the Contour
+        metamodel and against already-persisted state.
+      steps:
+        - reads: Contour Element
+        - reads: Contour Requirement
+        - reads: Contour Guardrail
+      result: Valid
+      alternatives:
+        Invalid: One or more violations were found; they are reported in full.
+      behavior: "Enforces the Contour v0.5 contradictions (Section 3.3) that can be decided at element
+        scope against persisted state: an element other than a System names a stored System; its
+        name is not taken by another element of that System, nor a System's name by another System;
+        a relationship target already exists, and allocation, exposure, calls, reads, modifies and
+        produces stay inside the System, while only uses, consumes, references and depends-on may
+        reach another System; allocation is single — one performer per Function, one owner per Data
+        Object, one producing Component per Event; reads and modifies stay with the owner, and an
+        Event is produced where its Function runs; a calls step stays within one Component; an
+        Interface serves an existing Actor or System and exposes only Functions one Component
+        performs; each exposed Function's responses cover exactly its outcomes; a uses step names an
+        Interface that exposes its target and serves the caller — System within one System, the
+        calling System by name across two — and maps Unreachable; becomes keys are the callee's
+        outcomes and values the caller's own alternatives; consumes appears only first; an Actor
+        uses only existing Functions that no Event starts; Event names are past tense; every
+        referenced Requirement and Guardrail is defined. An element that leaves the model incomplete
+        is valid: gaps are Check Model's concern, never this one's."
+      requirements:
+        - Enforce Contour Invariants
+        - Element Name Is Unique Within Its System
+      guardrails:
+        - Read-only function
+        - Gaps Never Block A Write
+  dataObjects:
+    - name: Contour Definition Version
+      description: An append-only snapshot of a Requirement or Guardrail definition's description at a
+        past version. Store Requirement and Store Guardrail write one before the live definition
+        advances, so a Requirement or Guardrail a change is graded against can itself be diffed when
+        its text changes.
+      schema:
+        kind: enum(Requirement, Guardrail)
+        version: integer
+        createdAt: date-time
+        changeNote: string?
+        description: string
+        definitionId: uuid
+      guardrails:
+        - Proper field indexes
+    - name: Contour Element
+      description: "One stored Contour element — a System, Component, Interface, Function, Event, Data
+        Object or Actor — persisted and retrieved individually rather than as part of a whole-System
+        payload. Every element but a System belongs to one System, which is its scope: names are
+        unique within it. Which Component a Function, Data Object or Event is allocated to is a
+        performs, owns or produces relationship, and an Interface's Component is derived. A
+        neighbour System is stored like any other, half-open: only the elements another System
+        touches."
+      schema:
+        id: uuid
+        name: string
+        version: integer
+        systemId: uuid?
+        createdAt: date-time
+        updatedAt: date-time
+        elementType: enum(System, Component, Interface, Function, Event, DataObject, Actor)
+    - name: Contour Element Version
+      description: An append-only snapshot of an element's record body at a past version. Store Element
+        writes one of these for the revision it is about to replace, before the live Contour Record
+        advances, so every prior revision is kept and Diff Element has a "before" to compare an
+        "after" against. The live record is always the current version; this table holds only the
+        superseded ones.
+      schema:
+        body: object
+        version: integer
+        changedBy: enum(Contour Console, Contour MCP Server)?
+        createdAt: date-time
+        elementId: uuid
+        changeNote: string?
+      guardrails:
+        - Proper field indexes
+    - name: Contour Guardrail
+      description: One stored Guardrail definition (Section 3.6), referenced by name from the elements it
+        bounds.
+      schema:
+        id: uuid
+        name: string
+        version: integer
+        createdAt: date-time
+        updatedAt: date-time
+        description: string
+      requirements:
+        - Uses full-text search
+      guardrails:
+        - Proper field indexes
+    - name: Contour Record
+      description: The structured record attached to each element — description, schema, a Function's
+        steps, result and alternatives, an Interface's serves, binding and exposed Functions, an
+        Actor's uses, a Component's or Interface's rationale, and referenced requirement and
+        guardrail names.
+      schema:
+        id: uuid
+        body: object
+        elementId: uuid
+      requirements:
+        - Uses full-text search
+      guardrails:
+        - Proper field indexes
+    - name: Contour Relationship
+      description: One edge between two already-persisted elements. Declared and persisted as part of the
+        "from" element's Store Element — explicitly, or derived from a reference its record makes —
+        never submitted on its own.
+      schema:
+        id: uuid
+        verb: enum(groups, performs, exposes, uses, calls, produces, consumes, reads, modifies, owns,
+          references, depends-on)
+        toElementId: uuid
+        fromElementId: uuid
+    - name: Contour Requirement
+      description: One stored Requirement definition (Section 3.6), referenced by name from the elements
+        it applies to.
+      schema:
+        id: uuid
+        name: string
+        version: integer
+        createdAt: date-time
+        updatedAt: date-time
+        description: string
+      requirements:
+        - Uses full-text search
+      guardrails:
+        - Proper field indexes
+  events:
+    - name: Element Deleted
+      description: One Contour element, its record and its relationships were removed.
+      schema:
+        systemId: uuid?
+        deletedAt: date-time
+        elementId: uuid
+    - name: Element Stored
+      description: One Contour element, its record and its outgoing relationships were created or updated.
+      schema:
+        name: string
+        version: integer
+        storedAt: date-time
+        systemId: uuid?
+        elementId: uuid
+        elementType: Contour Element.elementType
+    - name: Guardrail Deleted
+      description: One Guardrail definition was removed.
+      schema:
+        name: string
+        deletedAt: date-time
+    - name: Guardrail Stored
+      description: One Guardrail definition was created or updated.
+      schema:
+        name: string
+        version: integer
+        storedAt: date-time
+    - name: Requirement Deleted
+      description: One Requirement definition was removed.
+      schema:
+        name: string
+        deletedAt: date-time
+    - name: Requirement Stored
+      description: One Requirement definition was created or updated.
+      schema:
+        name: string
+        version: integer
+        storedAt: date-time
 Actor:
-- name: Modeler
-  description: >-
-    A person who works with Contour specifications — an architect, developer or analyst — browsing, reading
-    and editing them in a web browser. Reaches the same Functions the AI Agent does, through the Contour
-    Console (a Web UI binding) rather than through MCP.
-  uses:
-  - View System
-  - View Component
-  - View Interface
-  - View Function
-  - View Event
-  - View Data Object
-  - View Actor
-  - View Requirement
-  - View Guardrail
-  - Create or Modify System
-  - Create or Modify Component
-  - Create or Modify Interface
-  - Create or Modify Function
-  - Create or Modify Event
-  - Create or Modify Data Object
-  - Create or Modify Actor
-  - Create or Modify Requirement
-  - Create or Modify Guardrail
-  - Check Model
-  - Diff Element
-  - Search Specifications
-  - Search Requirements
-  - Search Guardrails
-  - Render Diagram
-  requirements: [Works In A Browser, Listings Are Paginated]
-  guardrails: [Diagrams Are Shown As Rendered]
-- name: AI Agent
-  description: >-
-    An LLM or agent that reads and stores Contour specifications on someone's behalf.
-  uses:
-  - Store Element
-  - Delete Element
-  - Retrieve Element
-  - Check Model
-  - Diff Element
-  - Store Requirement
-  - Retrieve Requirement
-  - Delete Requirement
-  - Store Guardrail
-  - Retrieve Guardrail
-  - Delete Guardrail
-  - Search Specifications
-  - Search Requirements
-  - Search Guardrails
-  - Render Diagram
-  requirements: [Reaches The System As Tools]
-
+  - name: AI Agent
+    description: An LLM or agent that reads and stores Contour specifications on someone's behalf.
+    uses:
+      - Store Element
+      - Delete Element
+      - Retrieve Element
+      - Retrieve Elements
+      - Retrieve System Scope
+      - Check Model
+      - Diff Element
+      - Store Requirement
+      - Retrieve Requirement
+      - Delete Requirement
+      - Store Guardrail
+      - Retrieve Guardrail
+      - Delete Guardrail
+      - Search Specifications
+      - Search Requirements
+      - Search Guardrails
+      - Resolve Requirements
+      - Resolve Guardrails
+      - Export Graph
+    requirements:
+      - Reaches The System As Tools
+  - name: Modeler
+    description: A person who works with Contour specifications — an architect, developer or analyst —
+      browsing, reading and editing them in a web browser. Reaches the model through the built-in
+      form-based browser Console (the Meanings UI), served in-process over the same core the AI
+      Agent reaches through MCP.
+    uses:
+      - Explore Models
+      - Open Model
+      - Read Element
+      - Save Element
+      - Check Model in View
+      - Define Requirement or Guardrail
+    requirements:
+      - Reaches The System As A Console
+      - Works In A Browser
+      - Readable By Business Users
+      - Actionable By Developers
 Requirement:
-- name: Local start composition
-  description: >-
-    A local development build must start with full features from a docker composition of the necessary
-    modules.
-- name: Element Write Is Atomic
-  description: >-
-    Store Element persists the element, its record and its outgoing relationships in one transaction,
-    or none of it; Delete Element removes the element, its record and every relationship referencing it
-    in one transaction, or none of it.
-- name: Element Must Be Well Formed
-  description: >-
-    A submitted element and its outgoing relationships must pass Validate Element before anything is persisted;
-    a submission with any violation is rejected in full.
-- name: Enforce Contour Invariants
-  description: >-
-    The System enforces the Contour v0.5 contradictions (Section 3.3): Validate Element those that can be
-    decided at element scope against persisted state, Check Model all of them across a whole model.
-- name: Report Gaps For Both Directions
-  description: >-
-    Check Model reports every gap of Contour v0.5 (Section 3.7) with its next step from each direction,
-    top-down and bottom-up, so a model can be completed from whichever end it was started.
-- name: Definition Write Is Atomic
-  description: >-
-    Storing or deleting a Requirement or Guardrail definition happens in one transaction, or not at all.
-- name: Definition Name Is Unique
-  description: >-
-    Requirement and Guardrail names are what elements reference them by; a definition whose name another
-    definition of the same kind already has is refused, so a name always resolves to exactly one definition.
-- name: Uses full-text search
-  description: >-
-    Every search over stored specifications is full-text over the searched item's name and all its descriptive
-    fields, not just exact identifiers.
-- name: Listings Are Paginated
-  description: >-
-    A listing the Console presents is requested in bounded pages with a stable, repeatable order and a
-    total count, never as the whole collection at once.
-- name: Works In A Browser
-  description: >-
-    The Modeler works with the System in a web browser, with nothing to install.
-- name: Reaches The System As Tools
-  description: >-
-    An AI Agent reaches the System as a set of tools it can discover and call through the Model Context
-    Protocol.
-- name: Ownership Relations Are Stored
-  description: >-
-    However a reference is submitted — as an explicit relationship edge, or as a name in the element's
-    record (a System's Components in groups, a Component's Functions in performs, its Data Objects in owns,
-    its Events in produces, an Interface's Functions in exposes, an Actor's Functions in uses, a Function's
-    step and alternative-effect targets) — Store Element stores both: each name that resolves within the
-    element's System becomes an edge, and each outgoing edge of a name-list verb is listed by name in the
-    record. Once stored, every relation the specification implies is retrievable, appears in the rendered
-    diagram and in the Console's view, and the record and the edges never disagree. A Function's steps are
-    the one exception: an edge never adds a step, because order lives only in the steps.
-- name: Element Name Is Unique Within Its System
-  description: >-
-    A System is the scope of its elements' names: no two elements of one System — the System itself
-    included — share a name, and no two Systems share a name. A name in a record, a step or an Interface's
-    serves therefore resolves to exactly one element of the System; a name reached across Systems (a uses
-    or consumes step to a neighbour) resolves through the Interface it names, or only when it is unique
-    across all Systems. A store that would duplicate a name is rejected.
-- name: Diagram layout in UI
-  description: >-
-    Diagram component shall fit into designated widget and adjust its zoom level to fit elements into.
-- name: Element View in UI
-  description: >-
-    The Console's view of an element shows its name, description, the requirements and guardrails it
-    references, and its relationships — including, where the element has them, performs, exposes,
-    uses, calls, reads, modifies, owns, references, groups, produces, depends-on and consumes — so a
-    reader sees the whole element, not a subset. Every reference to another element — in a Function's
-    steps, in a Component's performs/owns/produces, in an Interface's exposes, in an Actor's uses, and
-    in the relationships list — is a navigable link that opens that element in the view; a referenced
-    Requirement or Guardrail opens its definition. A reference whose target is not stored yet is shown
-    but not navigable (a gap, not an error). A reference opens the element it names within the viewed
-    element's own System — through the element's own edges first — never a same-named element of another
-    System. Navigation keeps a history so the reader can step back. UUIDs are resolved to Element
-    names.
-- name: Every Relationship Verb Reads Distinctly
-  description: >-
-    Each relationship verb the model stores and the diagram draws (uses, calls, reads, modifies, consumes,
-    references, depends-on) is rendered as a visually distinct edge — its own line style and/or colour — so
-    a reader distinguishes a data access from a call from an event flow without reading the label. Allocation
-    verbs that are absorbed into nesting (performs, owns, groups) are exempt because they are shown as
-    containment, not edges.
-- name: Every Element Type Reads Distinctly
-  description: >-
-    Each of the seven Contour element types is drawn with a shape that matches its kind — an Actor as a
-    person, a Data Object as storage, an Event as a queue, an Interface by its binding style, a
-    System/Component/Function as their own distinct shapes — so the type is legible from shape alone and
-    not from colour alone.
-- name: Events Are Drawn As Flow
-  description: >-
-    An Event appears on the diagram between the Component that produces it and the Functions that consume
-    it, so that both its production and its consumption read as a flow through the Event rather than the
-    Event appearing as an orphaned node. The producing relationship is shown, not hidden by nesting.
-- name: Nodes Carry Their Own Summary
-  description: >-
-    A node on the diagram shows a one-line summary drawn from its own record — an element's description, or
-    an Interface's binding — so the diagram is readable without opening each element. The summary is derived
-    from stored record fields only.
-- name: Record History Is Kept
-  description: >-
-    Every write that updates an existing element, Requirement or Guardrail first preserves the record body
-    (or description) it is about to replace, at its current version number, before the live row advances.
-    A superseded revision is never discarded, so any past revision can be read back and compared; the live
-    row remains the current version and the preserved rows the older ones.
-- name: Delta Is Typed And Field Keyed
-  description: >-
-    Diff Element reports a change as a structured delta keyed by the record's own fields and relationship
-    verbs — each entry naming the field or verb it touches, whether it was added, removed or changed, and
-    the value — not as a line-by-line text diff. A reader (human or agent) can act on each change without
-    re-parsing prose.
-- name: Delta States Code Implications
-  description: >-
-    Each change Diff Element reports carries an implication derived from the same Contour invariants
-    Validate Element and Check Model enforce, naming which consistency check or obligation the change puts
-    at risk — a new alternative needs a response mapping in every exposing Interface and a test; a changed
-    performs may split a calls edge; an added requirement or guardrail reference becomes an obligation to
-    grade against — so the delta reads as a change agent's task list, not just a record of what differs.
-
+  - name: Actionable By Developers
+    description: A developer can see a described change expressed against the model and get the
+      concrete, code-level implications - which Functions, outcomes, Interfaces and obligations it
+      touches - so the change can be propagated into code correctly.
+  - name: Definition Name Is Unique
+    description: Requirement and Guardrail names are what elements reference them by; a definition whose
+      name another definition of the same kind already has is refused, so a name always resolves to
+      exactly one definition.
+  - name: Definition Write Is Atomic
+    description: Storing or deleting a Requirement or Guardrail definition happens in one transaction,
+      or not at all.
+  - name: Definitions Resolve In One Query
+    description: Resolving a known set of Requirement or Guardrail definitions by name is done in one
+      bounded query over the set (name = ANY(names)), not one lookup per name. A caller that has a
+      list of referenced definition names — such as the Console building a System's tree — gets them
+      all back in a single call, so page/tree load issues a fixed, small number of requests
+      regardless of how many distinct definitions the model references.
+  - name: Delta Is Typed And Field Keyed
+    description: Diff Element reports a change as a structured delta keyed by the record's own fields
+      and relationship verbs — each entry naming the field or verb it touches, whether it was added,
+      removed or changed, and the value — not as a line-by-line text diff. A reader (human or agent)
+      can act on each change without re-parsing prose.
+  - name: Delta States Code Implications
+    description: Each change Diff Element reports carries an implication derived from the same Contour
+      invariants Validate Element and Check Model enforce, naming which consistency check or
+      obligation the change puts at risk — a new alternative needs a response mapping in every
+      exposing Interface and a test; a changed performs may split a calls edge; an added requirement
+      or guardrail reference becomes an obligation to grade against — so the delta reads as a change
+      agent's task list, not just a record of what differs.
+  - name: Element Must Be Well Formed
+    description: A submitted element and its outgoing relationships must pass Validate Element before
+      anything is persisted; a submission with any violation is rejected in full.
+  - name: Element Name Is Unique Within Its System
+    description: "A System is the scope of its elements' names: no two elements of one System — the
+      System itself included — share a name, and no two Systems share a name. A name in a record, a
+      step or an Interface's serves therefore resolves to exactly one element of the System; a name
+      reached across Systems (a uses or consumes step to a neighbour) resolves through the Interface
+      it names, or only when it is unique across all Systems. A store that would duplicate a name is
+      rejected."
+  - name: Element Write Is Atomic
+    description: Store Element persists the element, its record and its outgoing relationships in one
+      transaction, or none of it; Delete Element removes the element, its record and every
+      relationship referencing it in one transaction, or none of it.
+  - name: Elements Load In Bounded Queries
+    description: Retrieving the full records of a known set of elements is done in a bounded number of
+      queries over the set (elements, records and relationships read with id = ANY(ids)), not one
+      round-trip per element. A caller that needs several elements' full records at once — such as
+      the Console hydrating an opened element's cross-reference set for the inspector — gets them
+      all in one call, so opening an element issues a fixed, small number of requests regardless of
+      how many neighbours it references.
+  - name: Enforce Contour Invariants
+    description: "The System enforces the Contour v0.5 contradictions (Section 3.3): Validate Element
+      those that can be decided at element scope against persisted state, Check Model all of them
+      across a whole model."
+  - name: Function View Is Step-Ordered And Depth-Resolved
+    description: "When Export Graph is given a Function, the graph it returns is the Function View: the
+      focus Function, the Actors or Functions that invoke it (its inbound uses/calls callers), and
+      the focus's steps carried as step edges each tagged with its 1-based position in the record's
+      steps[]. A step edge is tied to its relation by verb AND target together, so two steps to the
+      same target via different verbs (e.g. reads then modifies one Data Object) keep distinct
+      ordinals and never swap, independent of relationship storage order. Every step that calls or
+      uses another Function is resolved in depth: the target Function is included carrying only its
+      own ordered step edges (none of its callers, performs or exposes), and resolution recurses
+      until a Function invokes no further Function; a cycle is entered at most once. The ordinals
+      and the depth resolution derive only from stored state (the record's steps[] and stored
+      relationships) and add no notation — Graph Carries Contour Semantics still holds."
+  - name: Graph Carries Contour Semantics
+    description: The exported graph names every node by its Contour element type and every edge by its
+      Contour relationship verb, in Contour's own vocabulary, and assigns no notation — no shapes,
+      colours, line styles or layout. Each of the seven element types and each of the nine
+      relationship verbs is carried as itself, so a consumer can map type and verb onto whatever
+      notation its target uses (LikeC4, ArchiMate, …). The engine does not choose a picture; it
+      states the graph (Contour §4).
+  - name: Local start composition
+    description: A local development build must start with full features from a docker composition of
+      the necessary modules.
+  - name: Nodes Carry Their Own Summary
+    description: Each node in the exported graph carries a one-line summary drawn from its own record —
+      an element's description, or an Interface's binding style — so a consumer can label the node
+      without a second lookup. The summary is derived from stored record fields only.
+  - name: Nothing is saved until Save button is pressed
+    description: Changes in Element view shall not trigger Store Element until Save button is pressed.
+  - name: Ownership Relations Are Stored
+    description: "However a reference is submitted — as an explicit relationship edge, or as a name in
+      the element's record (a System's Components in groups, a Component's Functions in performs,
+      its Data Objects in owns, its Events in produces, an Interface's Functions in exposes, an
+      Actor's Functions in uses, a Function's step and alternative-effect targets) — Store Element
+      stores both: each name that resolves within the element's System becomes an edge, and each
+      outgoing edge of a name-list verb is listed by name in the record. Once stored, every relation
+      the specification implies is retrievable, appears in the rendered diagram and in the Console's
+      view, and the record and the edges never disagree. A Function's steps are the one exception:
+      an edge never adds a step, because order lives only in the steps."
+  - name: Reaches The System As A Console
+    description: The human Modeler reaches the System through its built-in browser Console (the
+      form-based Meanings UI), served in-process over the same core the AI Agent reaches through MCP
+      — not as an external service client with its own identity, and not through the AI Agent's MCP
+      tools.
+  - name: Reaches The System As Tools
+    description: An AI Agent reaches the System as a set of tools it can discover and call through the
+      Model Context Protocol.
+  - name: Readable By Business Users
+    description: A non-developer stakeholder can read a Contour model and understand what a System does,
+      who it serves, and how a change would land \u2014 in plain business language, without reading
+      code or the raw record syntax.
+  - name: Record History Is Kept
+    description: Every write that updates an existing element, Requirement or Guardrail first preserves
+      the record body (or description) it is about to replace, at its current version number, before
+      the live row advances. A superseded revision is never discarded, so any past revision can be
+      read back and compared; the live row remains the current version and the preserved rows the
+      older ones.
+  - name: Report Gaps For Both Directions
+    description: Check Model reports every gap of Contour v0.5 (Section 3.7) with its next step from
+      each direction, top-down and bottom-up, so a model can be completed from whichever end it was
+      started.
+  - name: Scope Retrieval Is Bounded
+    description: Retrieve System Scope returns every element in one System's scope in a fixed, bounded
+      number of queries — not one query per element. However many elements a System holds, the whole
+      scope is read in the same small number of round-trips, so a caller building a System's tree
+      never pays an N+1 cost.
+  - name: Tree Loads Without Per-Element Fetches
+    description: Opening a System's tree in the Modeler reads the System's whole scope in one bounded
+      call (Contour's Retrieve System Scope), never one read per element. The number of calls to
+      build a tree does not grow with the number of elements in the System, so the tree opens
+      quickly however large the model.
+  - name: Uses full-text search
+    description: Every search over stored specifications is full-text over the searched item's name and
+      all its descriptive fields, not just exact identifiers.
+  - name: Works In A Browser
+    description: The Modeler works with the System in a web browser, with nothing to install.
 Guardrail:
-- name: Follow Technology Radar
-  description: >-
-    Technology choices must be compatible with the environment's Technology Radar.
-- name: No Infrastructure In Model
-  description: >-
-    contour-engine must not represent infrastructure (database, runtime, cloud topology) as Contour elements
-    in the specifications it stores or renders (principle 5).
-- name: Validation Precedes Persistence
-  description: >-
-    Store Element never writes any Data Object before Validate Element has ended Valid. Validation is
-    not advisory and is never skipped or run after the write.
-- name: Referenced Definitions Must Exist
-  description: >-
-    The Requirement and Guardrail names an element references resolve to stored definitions. A definition
-    still referenced by a stored element is never deleted; the delete is refused.
-- {name: Read-only function, description: The Function modifies no Data Object; it only reads.}
-- {name: Proper field indexes, description: Fields that are part of search queries are indexed.}
-- name: One Core For Every Actor
-  description: >-
-    Every Actor reaches the same Functions and the same Data Objects. However they reach the System, no
-    channel reimplements storage, search, validation or rendering.
-- name: Writes Are Validated By The System
-  description: >-
-    Every create, edit or delete an Actor makes goes through the System's own Functions, which decide
-    validity; nothing presents a write as done before they have.
-- name: Gaps Never Block A Write
-  description: >-
-    A model is built one element at a time, from either direction, and is incomplete until it is done. An
-    element is rejected only for a contradiction, never because the model still has gaps.
-- name: Diagrams Are Shown As Rendered
-  description: >-
-    A Modeler sees the diagram Render Diagram produces, unchanged; nothing re-derives a diagram or alters
-    its notation.
-- name: Diagram Derives Only From Stored State
-  description: >-
-    The diagram adds nothing the model does not contain: every node, every edge, and every style applied
-    to them is derived from a stored element, relationship, or record field. Styling presents the model;
-    it never invents structure.
-- name: Gaps Never Block A Render
-  description: >-
-    An incomplete model still renders. A reference that resolves to nothing is simply absent from the
-    diagram, never an error; gaps are Check Model's concern, not the render's.
-- name: History Is Append Only
-  description: >-
-    A preserved revision in Contour Element Version or Contour Definition Version is written once and never
-    updated or deleted while its element or definition exists. A write adds the superseded revision; it
-    never rewrites history. Diff Element and the other reads treat these rows as immutable facts.
+  - name: Follow Technology Radar
+    description: Technology choices must be compatible with the environment's Technology Radar.
+  - name: Gaps Never Block A Write
+    description: A model is built one element at a time, from either direction, and is incomplete until
+      it is done. An element is rejected only for a contradiction, never because the model still has
+      gaps.
+  - name: Gaps Never Block An Export
+    description: An incomplete model still exports. A reference that resolves to nothing is simply
+      absent from the graph, never an error; gaps are Check Model's concern, not the export's.
+  - name: Graph Derives Only From Stored State
+    description: "The exported graph adds nothing the model does not contain: every node and every edge
+      is derived from a stored element, relationship, or record field. The engine projects the
+      model; it never invents structure, and it assigns no notation."
+  - name: Graph Export Is One-Way And Lossy
+    description: "The graph the engine exports is a one-way projection of the model (Contour §4): it is
+      derived from stored state and handed to a consumer, and nothing drawn or arranged from it is
+      ever read back into the model. The record stays the single authority; an export is a picture
+      of the structure, not a second place to edit it. Whatever a target notation has no place for
+      (an Interface's one caller, a Function's steps and outcomes, Requirements and Guardrails, the
+      contradiction/gap distinction, the half-open neighbour) is simply absent from the graph."
+  - name: History Is Append Only
+    description: A preserved revision in Contour Element Version or Contour Definition Version is
+      written once and never updated or deleted while its element or definition exists. A write adds
+      the superseded revision; it never rewrites history. Diff Element and the other reads treat
+      these rows as immutable facts.
+  - name: No Infrastructure In Model
+    description: contour-engine must not represent infrastructure (database, runtime, cloud topology) as
+      Contour elements in the specifications it stores or renders (principle 5).
+  - name: One Core For Every Actor
+    description: Every Actor reaches the same Functions and the same Data Objects. However they reach
+      the System, no channel reimplements storage, search, validation or rendering.
+  - name: Presents The Model It Never Invents
+    description: The Console shows the diagram the engine's Export Graph produces and the findings Check
+      Model and Diff Element report; it may lay them out and narrate them for a business reader, but
+      never re-derives structure or invents model content the records do not contain.
+  - name: Proper field indexes
+    description: Fields that are part of search queries are indexed.
+  - name: Read-only function
+    description: The Function modifies no Data Object; it only reads.
+  - name: Referenced Definitions Must Exist
+    description: The Requirement and Guardrail names an element references resolve to stored
+      definitions. A definition still referenced by a stored element is never deleted; the delete is
+      refused.
+  - name: Validation Precedes Persistence
+    description: Store Element never writes any Data Object before Validate Element has ended Valid.
+      Validation is not advisory and is never skipped or run after the write.
+  - name: Writes Are Validated By The System
+    description: Every create, edit or delete an Actor makes goes through the System's own Functions,
+      which decide validity; nothing presents a write as done before they have.
+  - name: Writes Go Through Contour
+    description: Every create, edit or delete a user makes in the Console is submitted to the engine's
+      validated write Functions, which decide validity; the Console never presents a write as done
+      before the engine has accepted it, and never persists or validates on its own, bypassing the
+      core.

@@ -1,0 +1,39 @@
+{
+  "name": "contour-engine",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "description": "The single Contour System deployable: stores, validates, searches and exports Contour specifications, and serves the Modeler's Console and the AI Agent's MCP tools from one runtime.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:ui": "vite build",
+    "build:server": "tsc -p tsconfig.json",
+    "build": "npm run build:ui && npm run build:server",
+    "dev:server": "tsx watch src/server/main.ts",
+    "dev:ui": "vite",
+    "start": "node dist/server/main.js",
+    "migrate": "node dist/server/migrate.js",
+    "test": "node --test --import tsx tests/*.test.ts"
+  },
+  "dependencies": {
+    "@fastify/static": "^8.0.0",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "fastify": "^5.2.0",
+    "mermaid": "12.3.0",
+    "pg": "^8.13.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vite": "^5.4.11",
+    "yaml": "^2.9.1"
+  }
+}
