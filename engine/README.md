@@ -86,6 +86,58 @@ docker compose down -v
 The composition builds `./nodejs`; see [`nodejs/`](nodejs/) for that
 implementation's own sources, Dockerfile and developer workflow.
 
+## Using the engine
+
+The usual way to use the engine is **bottom-up**: point an agent at a real
+codebase and let the `contour-reverse` skill build a Contour record from the code
+and its documentation, stored straight into the running engine. End to end:
+
+1. **Start the engine.** Bring up the local composition (see *Running it locally*
+   above):
+
+   ```bash
+   docker compose up --build
+   ```
+
+   The MCP Server is then at `http://localhost:8000/mcp` and Meanings at `/`.
+
+2. **Configure the MCP connection** in your agent so it can reach the engine's
+   tools. Register it under the name `contour-engine` — see *Connecting an agent
+   to the engine* below for the exact Kiro and Claude Code configuration.
+
+3. **Make the Contour skills available in your agent.** Install `contour-reverse`
+   and `contour-verify` (and optionally the autoload hook) into your tool — see
+   the repository README's *Tools and skills* for the Kiro and Claude Code
+   editions and how to install them. Optionally also make
+   [`../contour.md`](../contour.md) (the framework specification) available in the
+   agent's context; the autoload hook does this for you when a prompt asks to
+   model or verify with Contour.
+
+4. **Point `contour-reverse` at a codebase and its documentation.** Give the
+   skill the source code to model and whatever business/product context exists —
+   design docs, READMEs, Confluence/wiki pages, Jira tickets, API specs. It reads
+   the code and the documentation together and builds the Contour record
+   **bottom-up** (code → specification), writing it into the engine through the
+   MCP tools. Example prompt:
+
+   > Reverse-engineer a Contour record for the service in `./src` into the
+   > `contour-engine` MCP. Use the design doc in `./docs/` and Jira epic ABC-123
+   > for the business context.
+
+   The documentation grounds the reconstruction; where a document and the code
+   disagree, the skill models what the code actually does.
+
+5. **Repeat step 4 for each neighbour.** Run `contour-reverse` again on the source
+   of each neighbouring System or Component the first one depends on, so the model
+   captures the boundaries between them (half-open neighbours reached through
+   their Interfaces). Each run adds or updates that neighbour's record in the same
+   engine.
+
+As records accumulate, read and refine them in **Meanings** (the Console), check
+a System with the engine's *Check Model*, and — when code changes — re-run
+`contour-reverse`, or use `contour-verify` to check the code against the stored
+record. The top-down direction (building code *from* a record) is covered next.
+
 ## Building contour-engine from the model
 
 `contour-engine.yaml` is meant to be **built from** directly by an LLM agent, the
