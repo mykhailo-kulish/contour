@@ -3,8 +3,8 @@
 The **contour-engine** is a Contour System: it stores, validates, checks,
 searches and exports Contour specifications and owns all Contour data. It serves
 two Actors from the same runtime — the **Modeler** through the **Contour
-Console** (a Web UI with a view and an editor per element type) and the **AI
-Agent** through the **Contour MCP Server** (as tools).
+Console** (a form-based Web UI) and the **AI Agent** through the **Contour MCP
+Server** (as tools).
 
 This folder holds the engine's **implementation-agnostic model** and one or more
 concrete **implementations** of it:
@@ -33,6 +33,36 @@ python3 ../skills/contour-check.py contour-engine.yaml
 ```
 
 (0 contradictions and 0 gaps.)
+
+## The Console
+
+The Modeler works in a three-pane, form-based Web UI (dark theme) served at
+`/` by the engine itself — no separate front-end product, the same core the MCP
+Server uses:
+
+- **Model tree** (left) — every System as a root, expanded into its Actors and
+  their Functions plus the System's Data Objects, Events, Requirements and
+  Guardrails. Each row shows a status dot: green complete, amber has gaps, red
+  contradicts.
+- **Editor** (center) — a form shaped per element kind: a Function's ordered
+  steps, outcomes and behavior; a Data Object's or Event's schema in Contour
+  notation; an Actor's used Functions; name, description and the attached
+  Requirements and Guardrails. A **Form / Diagram toggle** switches the center
+  pane to a read-only **Diagram View** of the selected element's graph (the
+  engine's `Export Graph` rendered with Mermaid): the whole-System graph for a
+  System, a step-ordered Function View for a Function. The Diagram View can be
+  zoomed, fitted to the frame, panned by dragging, and expanded to full screen;
+  clicking a node highlights that node and its **downstream path** — the
+  elements it reaches by following relationships in their direction, in full
+  depth — leaving the rest as they are.
+- **Inspector** (right) — what is *wrong* (contradictions, red) kept separate
+  from what is *still to fill in* (gaps, amber), plus a references panel (used
+  by / applies to / used by Functions). The top bar's **Check model** button is
+  the core's authoritative verdict.
+
+Every edit is written through the core's validated Functions (gaps never block a
+save; only a contradiction is refused), so the Console never persists or
+validates on its own.
 
 ## Running it locally
 
