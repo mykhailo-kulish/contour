@@ -1,0 +1,54 @@
+/* Global styling for the Meanings Modeler Editor (business view).
+   Values replicated from meanings-template.zip (Main.dc.html <helmet>). */
+:root {
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+body {
+  font-family: Roboto, system-ui, sans-serif;
+  background: #121212;
+  color: #ffffff;
+}
+#root {
+  min-height: 100%;
+}
+input,
+textarea,
+button,
+select {
+  font-family: inherit;
+}
+a {
+  color: #90caf9;
+}
+button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+/* Native dark dropdowns/options */
+select option {
+  background: #1e1e1e;
+  color: #ffffff;
+}
+::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+/* Thin dark scrollbars, matching the mockup's chrome */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
