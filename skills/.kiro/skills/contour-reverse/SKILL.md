@@ -202,6 +202,28 @@ For every Function, write:
   completed) to one of this Function's alternatives. Retries/timeouts are the
   Interface binding's concern, never a step.
 
+  **Branch placement — a step runs on *every* path to `result`.** `steps` is a
+  straight line (`contour.md` §3.3, §6): each entry runs unconditionally on the
+  way to `result`. A `calls`/`uses`/`reads`/`modifies`/`produces` that happens
+  only on *some* branches is **not** a step — it is an `effect` of the
+  `alternative` whose condition selects it (see `alternatives` below). The main
+  `steps` list is the one unconditional path; everything conditional hangs off the
+  outcome that triggers it. A target that appears in `steps` therefore runs
+  exactly once per `result`; a conditional one appears under its governing
+  `alternative`, never as a second sequential step.
+
+  **Smell: the same target reached twice.** If a Function reaches the same
+  downstream target both directly (`calls: B`) and transitively through another
+  step's callee (`calls: A`, where `A` already reaches `B`), that is almost
+  always a flattened `if`/`else`, not two real invocations — and listing both as
+  sequential steps reads as "B runs twice" when the code runs it once. Model `B`
+  once, on the branch that actually reaches it: put the conditional reach in the
+  governing `alternative`'s `effects`, leave the main `steps` as the single
+  unconditional path, and state in `behavior` that the two sites are mutually
+  exclusive and how many times `B` runs per invocation (e.g. "B runs at most once
+  per call"). Only keep `B` in `steps` **and** elsewhere if the code genuinely
+  invokes it on every path plus again conditionally — and then say so explicitly.
+
 - `result` — the **name** of the ending the main path reaches (`Placed`,
   `Found`, `Reserved`). Its effects are exactly the `steps`, so it carries
   nothing else. Name it for the result, not the check (§3.5).
@@ -274,6 +296,13 @@ Walk each decision point. First give it an **outcome** — the branch either
 continues the main path (`result`) or ends the Function in a named
 `alternative`, or (for a `uses`/`calls` callee ending) is pulled in by a
 `becomes` map. Then classify it:
+
+A branch's *effects* go where its *outcome* goes (branch-placement rule, §4): a
+side effect (`calls`/`uses`/`reads`/`modifies`/`produces`) that runs only on this
+branch belongs in its `alternative`'s `effects`, not in the main `steps`. Only
+effects that run on every path to `result` stay in `steps`. If the same
+downstream target turns up both in `steps` and on a branch, check it isn't a
+flattened `if`/`else` modeled as a double call (§4 smell).
 
 - **Business-rule branch** — the condition encodes a business decision or an
   invariant the element must uphold (reject order under $1, block if KYC not
@@ -638,6 +667,13 @@ End with a concise summary the user can act on:
 - **Every Function has outcomes.** Exactly one `result` (the main path's ending)
   and an `alternatives` entry for every other way it can end. Every `uses` step
   maps `Unreachable`.
+- **Only unconditional effects are steps.** A `calls`/`uses`/`reads`/`modifies`/
+  `produces` that runs on every path to `result` goes in `steps`; one that runs
+  only on a branch goes in that `alternative`'s `effects` (§4 branch-placement).
+  Never flatten an `if`/`else` into two sequential steps — if the same target is
+  reached both directly and through another step's callee, it is usually one
+  conditional call modeled twice; place it once and say in `behavior` how many
+  times it runs per invocation.
 - **`consumes` is a step** — the first step, at most once, for an Event-triggered
   Function (which is exposed by no Interface).
 - **Each Interface serves exactly one caller** — an Actor or `System` — and
