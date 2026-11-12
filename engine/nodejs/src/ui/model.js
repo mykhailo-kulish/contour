@@ -66,6 +66,58 @@ export function writeAlternatives(alts) {
   return out;
 }
 
+// ---- Interface channel (contour.md §3.3) --------------------------------
+
+// Serialize the editing binding model ({ style, keys:[{k,v}] }) back to the
+// stored block: a flat object with `style` first, then each non-empty key/value
+// row (value kept verbatim as its written text). Returns undefined when empty.
+export function writeBinding(binding) {
+  if (!binding) return undefined;
+  const out = {};
+  if (String(binding.style || "").trim()) out.style = binding.style.trim();
+  (binding.keys || []).forEach(({ k, v }) => {
+    const key = String(k || "").trim();
+    if (key) out[key] = String(v ?? "").trim();
+  });
+  return Object.keys(out).length ? out : undefined;
+}
+
+// Serialize the editing exposes model ([{ fn, operation, request, responses }])
+// back to the stored form. `request` is a shape editor model (or null) and each
+// `responses` value is a { code, body } editing model; both serialize to the
+// universal structured store form via writeShape/writeResponse (`fmt` is a
+// world-bound fmtType). A row with no operation, request or responses writes as
+// a bare name; otherwise it writes an { operation?, request?, responses? } block
+// keyed by the Function name. When every row is bare, the whole `exposes` is a
+// name list; otherwise it is an object keyed by name. Returns undefined when
+// nothing is exposed.
+export function writeExposes(exposes, fmt) {
+  const f = fmt || ((x) => fmtBare(x));
+  const rows = (exposes || []).filter((r) => String(r.fn || "").trim());
+  if (!rows.length) return undefined;
+  const block = (r) => {
+    const b = {};
+    if (String(r.operation || "").trim()) b.operation = r.operation.trim();
+    const request = r.request ? writeShape(r.request, f) : undefined;
+    if (request !== undefined && request !== null) b.request = request;
+    const responses = {};
+    Object.entries(r.responses || {}).forEach(([k, v]) => {
+      const name = String(k || "").trim();
+      if (!name) return;
+      const out = writeResponse(v, f);
+      if (out !== undefined && out !== "") responses[name] = out;
+    });
+    if (Object.keys(responses).length) b.responses = responses;
+    return b;
+  };
+  const blocks = rows.map((r) => ({ fn: r.fn.trim(), b: block(r) }));
+  const anyDetail = blocks.some((x) => Object.keys(x.b).length);
+  if (!anyDetail) return blocks.map((x) => x.fn);
+  const out = {};
+  blocks.forEach((x) => { out[x.fn] = x.b; });
+  return out;
+}
+
 export function asList(v) {
   if (v == null) return [];
   return Array.isArray(v) ? v.map(String) : [String(v)];
@@ -383,6 +435,165 @@ export function schemaPreview(schema, ownerId, world) {
   emitInline(schema.fields);
   schema.nested.forEach((nt) => emitInline(nt.fields));
   return blocks.join("\n\n");
+}
+
+// ---- universal shape (Data Object / Event schema; Interface request &
+//      response body), one structured store form -------------------------
+//
+// A "shape" is the same editor model readSchema/writeSchema use
+// ({ mode, fields, nested, ... }). These helpers let an Interface request and
+// response body be read and written with the exact same machinery as a Data
+// Object's fields, and they normalize the store form so a shape is always a
+// structured object (fieldName -> type-notation string, with every inline
+// `{ … }` extracted into a real nested object) rather than an opaque string.
+
+// Read a shape value into the editor model. Accepts the structured object form
+// (the new store form, and a Data Object's own schema shape) OR a legacy
+// notation STRING — a request stored as "{ id: uuid }", or a body stored as
+// "Order { id, status }" / "Order". A string is parsed: an outer `{ … }`
+// becomes the shape's fields (its members), and a bare ref/projection becomes a
+// single unnamed field carrying that notation (round-trips verbatim).
+export function readShape(value) {
+  if (value == null) return readSchema({});
+  if (typeof value === "object" && !Array.isArray(value)) {
+    // Already structured: reuse the schema reader (handles nested objects,
+    // embedded shapes and key order), but a shape never links to an external
+    // spec, so a { $ref }/string is treated as a body below, not here.
+    return readSchema({ schema: value });
+  }
+  const text = String(value).trim();
+  if (!text) return readSchema({});
+  // An outer inline object "{ a: T, b: U }" → the shape's own members.
+  if (text.startsWith("{") && text.endsWith("}")) {
+    const members = parseInlineMembers(text.slice(1, -1));
+    const obj = {};
+    members.forEach((m) => { const n = String(m.n || "").trim(); if (n) obj[n] = fmtBare(m); });
+    return readSchema({ schema: obj });
+  }
+  // A bare ref / projection ("Order", "Order { id, status }") → one field with
+  // no name, carrying the notation verbatim. The body still reads as a shape so
+  // the editor shows a single row; it serializes back to the same string.
+  return readSchema({ schema: { "": text } });
+}
+
+// Format one editor field to its notation string WITHOUT a world (so a `raw`
+// member of a parsed inline shape round-trips; ref/proj by id aren't produced
+// by the parser, only by the editor's dropdowns, which do have a world).
+function fmtBare(f) {
+  const base = f.k === "prim" ? f.a
+    : f.k === "enum" ? (listVals(f.b).length ? "enum(" + listVals(f.b).join(", ") + ")" : "")
+    : f.k === "inline" ? (f.b.trim() ? "{ " + f.b.trim() + " }" : "")
+    : f.k === "raw" ? String(f.b || "").trim()
+    : "";
+  if (!base) return "";
+  return base + (f.list || "") + (f.opt ? "?" : "");
+}
+
+// Serialize a shape editor model to the universal store form: a structured
+// object mapping each field name to its type-notation string, with every inline
+// `{ … }` extracted into a real nested object (never left as a string). Built on
+// writeSchema with inline extraction turned on. Returns undefined when empty.
+// A single unnamed field (a bare body like "Order { id, status }") serializes
+// to that notation string, since it has no field name to key an object by.
+export function writeShape(schema, fmt) {
+  if (!schema) return undefined;
+  const realFields = (schema.fields || []).filter((f) => String(f.n || "").trim() || f.k);
+  // A lone unnamed field is a bare body (a ref/projection/inline with no field
+  // name): emit its notation string, not an object.
+  if (realFields.length === 1 && !String(realFields[0].n || "").trim()) {
+    const s = fmt(realFields[0]);
+    return s ? s : undefined;
+  }
+  return writeSchema(extractInline(schema, fmt), fmt);
+}
+
+// Return a copy of the schema with every inline `{ … }` field (kind "inline")
+// promoted to an embedded nested object, so writeSchema emits it as a real
+// nested object rather than a string. Idempotent for schemas with no inline
+// fields.
+function extractInline(schema, fmt) {
+  if (!schema || !Array.isArray(schema.fields)) return schema;
+  const hasInline = (fs) => (fs || []).some((f) => f.k === "inline");
+  if (!hasInline(schema.fields) && !(schema.nested || []).some((nt) => hasInline(nt.fields))) return schema;
+  const next = JSON.parse(JSON.stringify(schema));
+  let seq = next.seq || (next.nested ? next.nested.length + 1 : 1);
+  const promote = (fields) => {
+    fields.forEach((f) => {
+      if (f.k === "inline") {
+        const members = parseInlineMembers(f.b);
+        const id = "n" + seq;
+        seq += 1;
+        next.nested = next.nested || [];
+        next.nested.push({ id, n: f.n || ("shape" + seq), fields: members, embedded: true });
+        f.k = "embed";
+        f.a = id;
+        f.b = "";
+      }
+    });
+  };
+  promote(next.fields);
+  (next.nested || []).forEach((nt) => promote(nt.fields));
+  next.seq = seq;
+  return next;
+}
+
+// Read a response value into { code, body } where body is a shape editor model
+// (or null when there is no body). Accepts: a bare code (number/string like 404
+// or "NOT_FOUND"); a structured { code, body }; or a legacy string such as
+// "200 { body: Order }", "201", or "Order" (a lone body). The body, when
+// present, is read with readShape so it edits like any other shape.
+export function readResponse(value) {
+  const empty = { code: "", body: null };
+  if (value == null) return empty;
+  if (typeof value === "number") return { code: String(value), body: null };
+  if (typeof value === "object" && !Array.isArray(value)) {
+    const code = value.code == null ? "" : String(value.code);
+    const body = value.body == null || value.body === "" ? null : readShape(value.body);
+    return { code, body };
+  }
+  const text = String(value).trim();
+  if (!text) return empty;
+  // "CODE { body: SHAPE }" or "CODE { members }" or "CODE SHAPE" or just "CODE".
+  // A projection body ("Order { id, status }") has no code — its head is a ref
+  // name, not a status code. A real code is numeric or an ALL_CAPS/underscore
+  // token (200, 404, OK, NOT_FOUND).
+  const braceAt = text.indexOf("{");
+  const looksLikeCode = (s) => /^\d+$/.test(s) || /^[A-Z][A-Z0-9_]*$/.test(s);
+  if (braceAt >= 0) {
+    const head = text.slice(0, braceAt).trim();
+    if (!looksLikeCode(head)) {
+      // No code — the whole thing is a bare body (ref + projection).
+      return { code: "", body: readShape(text) };
+    }
+    const rest = text.slice(braceAt).trim();
+    const inner = rest.startsWith("{") && rest.endsWith("}") ? rest.slice(1, -1).trim() : rest;
+    const bodyText = inner.replace(/^body\s*:/i, "").trim();
+    if (!bodyText) return { code: head, body: null };
+    // The body may be a bare ref/projection ("Order", "Order { id, status }"),
+    // an already-brace-wrapped shape ("{ id: uuid }"), or a bare member list
+    // ("id: uuid, note: string"). Read a ref/wrapped form directly; wrap a bare
+    // member list so readShape sees it as a shape object.
+    const bareBody = (/^[A-Za-z]/.test(bodyText) && bodyText.indexOf(":") < 0)
+      || (bodyText.startsWith("{") && bodyText.endsWith("}"));
+    return { code: head, body: readShape(bareBody ? bodyText : "{ " + bodyText + " }") };
+  }
+  // No braces: "201", "NOT_FOUND", or a bare body like "Order".
+  const codeLike = /^[A-Za-z0-9_]+$/.test(text) && /\d|^[A-Z_]+$/.test(text);
+  if (codeLike) return { code: text, body: null };
+  return { code: "", body: readShape(text) };
+}
+
+// Serialize { code, body } back to the store form: a bare code string when
+// there is no body; otherwise a structured { code, body } where body is the
+// universal shape object. Returns undefined when empty.
+export function writeResponse(resp, fmt) {
+  if (!resp) return undefined;
+  const codeStr = String(resp.code || "").trim();
+  // Keep an all-numeric code numeric (as stored), otherwise a string token.
+  const code = codeStr === "" ? undefined : (/^\d+$/.test(codeStr) ? Number(codeStr) : codeStr);
+  const body = resp.body ? writeShape(resp.body, fmt) : undefined;
+  if (body === undefined || body === null) return code === undefined ? undefined : code;
+  return { code, body };
 }
 
 // Per-field issues (contradictions `c`, gaps `g`) used for inline hints.

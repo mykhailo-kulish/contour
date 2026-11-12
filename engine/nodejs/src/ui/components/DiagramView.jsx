@@ -101,6 +101,20 @@ export function graphToMermaid(graph, focusId) {
   return lines.join("\n");
 }
 
+// Build a lookup from a rendered edge's endpoint node ids ("nodeId(from)->nodeId(to)") to the
+// hint text the engine put on that edge — the `when` condition of a conditional alternative's
+// effect (contour.md §3.3). Used to attach an on-hover explanation to the matching edge path.
+// Derived only from the already-fetched graph; edges without a hint are omitted.
+export function buildEdgeHints(graph) {
+  const edges = (graph && graph.edges) || [];
+  const m = new Map();
+  for (const e of edges) {
+    if (!e || !e.hint) continue;
+    m.set(`${nodeId(e.from)}->${nodeId(e.to)}`, String(e.hint));
+  }
+  return m;
+}
+
 // Build what the selection highlight needs, keyed by the Mermaid node id
 // (nodeId(uuid)) so the rendered SVG can be matched directly by id/classes:
 //   - reach(nodeId): the full-depth reachable set from that node, following
@@ -159,6 +173,18 @@ function endpointsOfEdgeEl(p) {
   const id = p.id || "";
   const m = id.match(/-L_(n[a-zA-Z0-9]+)_(n[a-zA-Z0-9]+)_\d+$/);
   return m ? [m[1], m[2]] : [null, null];
+}
+
+// The edge-label groups, paired to their edge paths by document order. Mermaid 12
+// emits one label group per edge under `g.edgeLabels`, in the same order as the
+// `path.flowchart-link` edges, so the i-th label belongs to the i-th edge. The group
+// has carried the class `edgeLabel` across 12.x builds; we also accept a direct child
+// of `g.edgeLabels` as a fallback. Returns the label group elements in document order.
+function edgeLabelEls(svgEl) {
+  const byClass = Array.from(svgEl.querySelectorAll("g.edgeLabels g.edgeLabel"));
+  if (byClass.length) return byClass;
+  const container = svgEl.querySelector("g.edgeLabels");
+  return container ? Array.from(container.querySelectorAll(":scope > g")) : [];
 }
 
 // Highlight styling — accent stroke on the node's shape and the edge's path.
@@ -259,6 +285,7 @@ export function DiagramView({ element }) {
 
   const graph = state.phase === "ready" ? state.graph : null;
   const adjacency = useMemo(() => (graph ? buildAdjacency(graph) : null), [graph]);
+  const edgeHints = useMemo(() => (graph ? buildEdgeHints(graph) : null), [graph]);
 
   // Load the element's graph (Read Element -> Export Graph). One call: the engine
   // returns the projection for the element's type — a Function yields the
@@ -292,6 +319,82 @@ export function DiagramView({ element }) {
       .catch((e) => { if (!cancelled) setState({ phase: "error", message: "Could not render diagram: " + String(e.message || e) }); });
     return () => { cancelled = true; };
   }, [state.phase, state.graph, elementId]);
+
+  // Attach on-hover hints to conditional-branch edges, on the edge LABEL (the verb text drawn on
+  // the arrow) rather than the line. A long-form alternative's effect (contour.md §3.3) is drawn
+  // without a step number; its `when` condition rides along as an SVG <title> on the label, so
+  // hovering the label explains when the branch is taken. Presentation only over the already-fetched
+  // graph — no re-derivation, no engine call. Edge paths and their label groups are emitted by
+  // Mermaid in the same order, so the i-th label belongs to the i-th edge; we identify the edge by
+  // the path's decoded endpoints and hang the hint on the paired label.
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface || !svg) return;
+    const svgEl = surface.querySelector("svg");
+    if (!svgEl) return;
+
+    // Always clear anything we injected on a previous pass (re-render reuses the DOM).
+    for (const t of Array.from(svgEl.querySelectorAll("title[data-contour-hint]"))) t.remove();
+    for (const r of Array.from(svgEl.querySelectorAll("rect[data-contour-hitrect]"))) r.remove();
+    for (const el of Array.from(svgEl.querySelectorAll("[data-contour-hinted]"))) {
+      el.removeAttribute("data-contour-hinted");
+      el.style.cursor = "";
+      el.style.pointerEvents = "";
+    }
+    if (!edgeHints || edgeHints.size === 0) return;
+
+    const mkTitle = (text) => {
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      title.setAttribute("data-contour-hint", "1");
+      title.textContent = text;
+      return title;
+    };
+
+    const paths = Array.from(svgEl.querySelectorAll("path.flowchart-link"));
+    const labels = edgeLabelEls(svgEl);
+
+    // Prefer matching a label to its edge by the endpoints encoded in the label's own id
+    // (Mermaid 12 sets `id="...L_<from>_<to>_<n>"` on the label group in most builds); fall back
+    // to document order, which Mermaid keeps identical between paths and labels.
+    const labelByEndpoints = new Map();
+    for (const l of labels) {
+      const id = l.id || "";
+      const m = id.match(/-L_(n[a-zA-Z0-9]+)_(n[a-zA-Z0-9]+)_\d+$/);
+      if (m) labelByEndpoints.set(`${m[1]}->${m[2]}`, l);
+    }
+
+    paths.forEach((p, i) => {
+      const [a, b] = endpointsOfEdgeEl(p);
+      const hint = a && b ? edgeHints.get(`${a}->${b}`) : undefined;
+      if (!hint) return;
+      const label = (a && b && labelByEndpoints.get(`${a}->${b}`)) || labels[i];
+      if (!label) return;
+      // The label group is the hover target: a comfortable area over the verb text. A native
+      // <title> tooltip shows on hover. Because the text glyphs leave gaps, lay a transparent
+      // background rect over the label's bounding box so the whole label area catches the pointer.
+      label.setAttribute("data-contour-hinted", "1");
+      label.style.cursor = "help";
+      label.style.pointerEvents = "all";
+      try {
+        const bb = label.getBBox();
+        const pad = 4;
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        rect.setAttribute("data-contour-hitrect", "1");
+        rect.setAttribute("x", String(bb.x - pad));
+        rect.setAttribute("y", String(bb.y - pad));
+        rect.setAttribute("width", String(bb.width + pad * 2));
+        rect.setAttribute("height", String(bb.height + pad * 2));
+        rect.setAttribute("fill", "transparent");
+        rect.style.pointerEvents = "all";
+        rect.style.cursor = "help";
+        rect.appendChild(mkTitle(hint));
+        label.insertBefore(rect, label.firstChild);
+      } catch {
+        // getBBox can throw if the label isn't laid out yet; the group title below still applies.
+      }
+      label.appendChild(mkTitle(hint));
+    });
+  }, [svg, edgeHints]);
 
   // When a new element's graph renders, open with nothing highlighted (the
   // whole graph at normal strength) and the diagram fit to the frame. The
@@ -460,7 +563,12 @@ export function DiagramView({ element }) {
       try { window.getSelection && window.getSelection().removeAllRanges(); } catch {}
     }
     if (!pan.current.moved) return;
-    setTf((t) => ({ ...t, x: pan.current.origX + dx, y: pan.current.origY + dy }));
+    // Capture the drag origin into locals before updating state. The setTf
+    // updater must not dereference pan.current, which endPan/onPointerLeave can
+    // null out between this call and when React invokes the updater — that race
+    // is what threw "Cannot read properties of null (reading 'origX')".
+    const { origX, origY } = pan.current;
+    setTf((t) => ({ ...t, x: origX + dx, y: origY + dy }));
   };
   const endPan = (ev) => {
     const g = pan.current;

@@ -5,11 +5,12 @@
 // Requirements and Guardrails. Name resolution, status and Check Model are
 // scoped per System. Meanings stores and validates nothing itself — the top
 // bar's "Check model" is Contour's authoritative verdict for the System in view.
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { api, Rejected } from "./api.js";
 import { C } from "./theme.js";
 import { useModel } from "./useModel.js";
 import { issues, dataTouched } from "./model.js";
+import { parseUrl, writeUrl, selFromView } from "./url.js";
 import { TopBar } from "./components/TopBar.jsx";
 import { Tree } from "./components/Tree.jsx";
 import { Inspector } from "./components/Inspector.jsx";
@@ -20,8 +21,23 @@ export function App() {
   const elements = m.elements;
 
   const [sel, setSel] = useState(null);          // selected element id (incl. def pseudo-ids)
-  const [open, setOpen] = useState({});          // expand state: key -> bool (sys:/actor:/grp:)
+  const [open, setOpen] = useState({});          // expand state: key -> bool (sys:/actor:/comp:/grp:)
+  const [groupBy, setGroupBy] = useState({});    // systemId -> "actor" | "component" (default actor)
+  const [pane, setPane] = useState("form");      // center pane: "form" | "diagram" (part of the shareable view)
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);   // transient "Link copied" feedback
+  // Shareable View URL (requirement: Shareable View URL). The view parsed from
+  // the address bar on load / Back-Forward, pending until elements load so it
+  // can be revealed; and a guard so we only auto-apply it once.
+  const pendingUrlRef = useRef(parseUrl());
+  const urlAppliedRef = useRef(false);
+  const restoringRef = useRef(false);            // true while applying a URL/Back-Forward view (don't reset pane)
+  const prevSelRef = useRef(null);
+
+  // How a System's Functions are nested in the tree — "By Actor" (default) or
+  // "By Component". Chosen per System, persisted while the System stays open.
+  const groupingOf = (systemId) => groupBy[systemId] || "actor";
+  const setGrouping = (systemId, mode) => setGroupBy((g) => ({ ...g, [systemId]: mode }));
 
   // All systems, in listing order.
   const systems = useMemo(
@@ -29,9 +45,23 @@ export function App() {
     [m.systemIds, elements],
   );
 
-  // Expand the first System once loaded, and select it if nothing is selected.
+  // Expand the first System once loaded, and select the view the URL asks for
+  // (Shareable View URL) — or the first System if the URL names nothing valid.
+  // Applied once, after elements load so the target can be revealed in the tree.
   useEffect(() => {
-    if (!systems.length) return;
+    if (!systems.length || urlAppliedRef.current) return;
+    urlAppliedRef.current = true;
+    const v = pendingUrlRef.current;
+    if (v) {
+      restoringRef.current = true;
+      if (v.grouping === "component" && v.systemId) setGrouping(v.systemId, "component");
+      if (v.pane) setPane(v.pane);
+      const target = selFromView(v);
+      // Resolve to the nearest valid view: the asked element, else its System,
+      // else the first System — never an error (requirement: degrade gracefully).
+      if (target && allById[target]) { selectAndReveal(target, v.grouping); return; }
+      if (v.systemId && allById[v.systemId]) { selectAndReveal(v.systemId, v.grouping); return; }
+    }
     setOpen((o) => (Object.keys(o).length ? o : { ["sys:" + systems[0].id]: true }));
     setSel((s) => s || systems[0].id);
   }, [systems]);
@@ -48,6 +78,60 @@ export function App() {
 
   const current = sel ? allById[sel] : null;
 
+  // ---- Shareable View URL (requirement: Shareable View URL) ----
+  // Describe the current view for the address bar: the System + element in
+  // view, the active grouping, and the center pane. Definitions carry no System
+  // (they live under /d/<kind>/<id>).
+  const currentView = useMemo(() => {
+    if (!current) return null;
+    if (current.kind === "Requirement" || current.kind === "Guardrail") {
+      return { defKind: current.kind === "Requirement" ? "req" : "gr", defId: current.defId, pane };
+    }
+    const systemId = current.systemId || (current.kind === "System" ? current.id : null);
+    if (!systemId) return null;
+    const grouping = groupBy[systemId] || "actor";
+    const view = { systemId, elementId: current.id, grouping };
+    // The pane only matters for an element that has a diagram.
+    if (current.id !== systemId) view.pane = pane;
+    return view;
+  }, [current, groupBy, pane]);
+
+  // Keep the address bar in step with the view, in place (no reload). A plain
+  // selection/grouping/pane change replaces history; the Back button is handled
+  // by the popstate listener below.
+  useEffect(() => {
+    if (!urlAppliedRef.current) return; // don't fight the initial URL before it's applied
+    writeUrl(currentView, { push: false });
+  }, [currentView]);
+
+  // Back/Forward: re-read the URL and restore that view.
+  useEffect(() => {
+    const onPop = () => {
+      const v = parseUrl();
+      if (v) {
+        restoringRef.current = true;
+        if (v.grouping === "component" && v.systemId) setGrouping(v.systemId, "component");
+        setPane(v.pane || "form");
+        const target = selFromView(v);
+        if (target && allById[target]) { selectAndReveal(target, v.grouping); return; }
+        if (v.systemId && allById[v.systemId]) { selectAndReveal(v.systemId, v.grouping); return; }
+      }
+      setSel(null);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [allById]);
+
+  // Reset the center pane to the Form when the Modeler opens a different element
+  // (the old per-element behaviour), unless we are restoring a view from the URL
+  // (where the pane is part of what the link asked for).
+  useEffect(() => {
+    if (sel === prevSelRef.current) return;
+    prevSelRef.current = sel;
+    if (restoringRef.current) { restoringRef.current = false; return; }
+    setPane("form");
+  }, [sel]);
+
   // Elements of one System, keyed by id (the scope for the editor/inspector).
   const scopeOf = (systemId) => {
     const out = {};
@@ -55,7 +139,7 @@ export function App() {
     return out;
   };
   const byKindIn = (systemId) => {
-    const g = { System: [], Actor: [], Function: [], DataObject: [], Event: [], Requirement: [], Guardrail: [] };
+    const g = { System: [], Actor: [], Component: [], Function: [], DataObject: [], Event: [], Requirement: [], Guardrail: [] };
     Object.values(scopeOf(systemId)).forEach((el) => { (g[el.kind] || (g[el.kind] = [])).push(el); });
     return g;
   };
@@ -83,22 +167,52 @@ export function App() {
 
     const branch = [];
     if (sysOpen) {
-      // Actors (each expands to its used Functions).
-      (bk.Actor || []).forEach((actor) => {
-        const aKey = "actor:" + actor.id;
-        const aOpen = isOpen(aKey);
-        branch.push({ level: "actor", id: actor.id, label: actor.name, indent: ind(1), expandable: true, expanded: aOpen, selectOpens: true, toggleKey: aKey, chevLabel: `Show or hide the Functions ${actor.name} uses` });
-        if (aOpen) {
-          (actor.uses || []).forEach((fname) => {
-            const fn = (bk.Function || []).find((f) => f.name === fname);
-            if (fn) branch.push({ level: "leaf", id: fn.id, label: fn.name, indent: ind(2) });
-          });
-          branch.push({ isAdd: true, label: "Function", indent: ind(2) + 28, toggleKey: aKey + ":add", pick: () => onNewFunction(actor) });
-        }
+      const grouping = groupingOf(sys.id);
+      // Grouping selector: a two-tab row choosing how this System's Functions
+      // nest — "By Actor" (default) or "By Component". Both are drawn from the
+      // same light scope, so switching needs no fetch.
+      branch.push({
+        isTabs: true,
+        indent: ind(1),
+        toggleKey: sysKey + ":tabs",
+        value: grouping,
+        tabs: [
+          { key: "actor", label: "By Actor" },
+          { key: "component", label: "By Component" },
+        ],
+        onPick: (mode) => setGrouping(sys.id, mode),
       });
-      branch.push({ isAdd: true, label: "Actor", indent: ind(1) + 28, toggleKey: sysKey + ":addActor", pick: () => createElement("Actor", sys.id) });
 
-      // Group nodes (always present; count only — no status on the tree).
+      if (grouping === "actor") {
+        // Actors (each expands to its used Functions).
+        (bk.Actor || []).forEach((actor) => {
+          const aKey = "actor:" + actor.id;
+          const aOpen = isOpen(aKey);
+          branch.push({ level: "actor", id: actor.id, label: actor.name, indent: ind(1), expandable: true, expanded: aOpen, selectOpens: true, toggleKey: aKey, chevLabel: `Show or hide the Functions ${actor.name} uses` });
+          if (aOpen) {
+            (actor.uses || []).forEach((fname) => {
+              const fn = (bk.Function || []).find((f) => f.name === fname);
+              if (fn) branch.push({ level: "leaf", id: fn.id, label: fn.name, indent: ind(2) });
+            });
+            branch.push({ isAdd: true, label: "Function", indent: ind(2) + 28, toggleKey: aKey + ":add", pick: () => onNewFunction(actor) });
+          }
+        });
+        branch.push({ isAdd: true, label: "Actor", indent: ind(1) + 28, toggleKey: sysKey + ":addActor", pick: () => createElement("Actor", sys.id) });
+      } else {
+        // Components (each expands to the Functions it performs).
+        (bk.Component || []).forEach((comp) => {
+          const cKey = "comp:" + comp.id;
+          const cOpen = isOpen(cKey);
+          branch.push({ level: "component", id: comp.id, label: comp.name, indent: ind(1), expandable: true, expanded: cOpen, selectOpens: true, toggleKey: cKey, chevLabel: `Show or hide the Functions ${comp.name} performs` });
+          if (cOpen) {
+            (comp.performs || []).forEach((fname) => {
+              const fn = (bk.Function || []).find((f) => f.name === fname);
+              if (fn) branch.push({ level: "leaf", id: fn.id, label: fn.name, indent: ind(2) });
+            });
+          }
+        });
+        branch.push({ isAdd: true, label: "Component", indent: ind(1) + 28, toggleKey: sysKey + ":addComponent", pick: () => createElement("Component", sys.id) });
+      }
       const refNames = (field) => {
         const s = new Set();
         Object.values(scopeOf(sys.id)).forEach((el) => (el[field] || []).forEach((n) => s.add(n)));
@@ -132,7 +246,7 @@ export function App() {
   // the tree (the tree draws from the light scope and shows no status). Nothing
   // is hydrated eagerly on opening a System: records load on element open, for
   // the opened element and the bounded cross-reference set its inspector needs.
-  const { refetchElement, hydrateCrossRefs, hydrateFunctionTargets } = m;
+  const { refetchElement, hydrateCrossRefs, hydrateFunctionTargets, hydrateKindOf } = m;
   // On select: load the selected element's full record, then its cross-reference
   // set (Actor's used Functions; a Data Object's/Event's touching Functions) in
   // one batch call, so the inspector's checks run on open.
@@ -146,6 +260,15 @@ export function App() {
   // Interfaces/Functions — hydrate just this Function's step targets in one batch
   // call when it is opened, not every element of every System.
   useEffect(() => { if (current && current.kind === "Function") hydrateFunctionTargets(current); }, [current?.id, current?.kind, hydrateFunctionTargets]);
+  // The light scope carries no `exposes` (Interface) nor outcomes (Function), so
+  // hydrate the System's Interfaces when a Function is opened (so its "Exposed
+  // by" panel is accurate) and the System's Functions when an Interface is
+  // opened (so its exposes editor can offer each Function's real outcomes).
+  useEffect(() => {
+    if (!current || !current.systemId) return;
+    if (current.kind === "Function") hydrateKindOf(current.systemId, ["Interface"]);
+    else if (current.kind === "Interface") hydrateKindOf(current.systemId, ["Function", "DataObject", "Component"]);
+  }, [current?.id, current?.systemId, current?.kind, hydrateKindOf]);
 
   // ---- totals for the top bar (the System in view) ----
   const { totalWrong, totalGaps } = useMemo(() => {
@@ -167,8 +290,14 @@ export function App() {
     const sysEl = elements[currentSystemId];
     crumbs.push({ label: sysEl.name, pick: () => selectAndReveal(sysEl.id), active: current?.id === sysEl.id });
     if (current && current.kind === "Function") {
-      const actor = Object.values(scopeOf(currentSystemId)).find((a) => a.kind === "Actor" && (a.uses || []).includes(current.name));
-      if (actor) crumbs.push({ label: actor.name, pick: () => selectAndReveal(actor.id), active: false });
+      const scope = scopeOf(currentSystemId);
+      if (groupingOf(currentSystemId) === "component") {
+        const comp = Object.values(scope).find((c) => c.kind === "Component" && (c.performs || []).includes(current.name));
+        if (comp) crumbs.push({ label: comp.name, pick: () => selectAndReveal(comp.id), active: false });
+      } else {
+        const actor = Object.values(scope).find((a) => a.kind === "Actor" && (a.uses || []).includes(current.name));
+        if (actor) crumbs.push({ label: actor.name, pick: () => selectAndReveal(actor.id), active: false });
+      }
     }
     if (current && current.id !== sysEl.id) {
       crumbs.push({ label: current.name, pick: () => selectAndReveal(current.id), active: true });
@@ -310,21 +439,47 @@ export function App() {
 
   const toggle = (key, forceOpen = false) => setOpen((o) => ({ ...o, [key]: forceOpen ? true : !o[key] }));
 
+  // Copy a link to the current view to the clipboard (Shareable View URL). The
+  // address bar already reflects the view; this is the convenience affordance.
+  async function copyViewLink() {
+    const href = window.location.href;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(href);
+      else {
+        const ta = document.createElement("textarea");
+        ta.value = href; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        document.execCommand("copy"); document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch { /* clipboard blocked; the address bar still holds the link */ }
+  }
+
   // Select an element and make sure its branch is open, so a jump from a
   // breadcrumb, a reference chip or the inspector reveals it in the tree.
-  function selectAndReveal(id) {
+  function selectAndReveal(id, groupingOverride) {
     setSel(id);
     const el = allById[id];
     if (!el) return;
+    const groupingFor = (sysId) => groupingOverride || groupingOf(sysId);
     const next = {};
     if (el.kind === "System") { next["sys:" + el.id] = true; }
     else if (el.systemId) {
       next["sys:" + el.systemId] = true;
       if (el.kind === "Function") {
-        const actor = Object.values(scopeOf(el.systemId)).find((a) => a.kind === "Actor" && (a.uses || []).includes(el.name));
-        if (actor) next["actor:" + actor.id] = true;
+        const scope = scopeOf(el.systemId);
+        if (groupingFor(el.systemId) === "component") {
+          const comp = Object.values(scope).find((c) => c.kind === "Component" && (c.performs || []).includes(el.name));
+          if (comp) next["comp:" + comp.id] = true;
+        } else {
+          const actor = Object.values(scope).find((a) => a.kind === "Actor" && (a.uses || []).includes(el.name));
+          if (actor) next["actor:" + actor.id] = true;
+        }
       } else if (el.kind === "Actor") {
         next["actor:" + el.id] = true;
+      } else if (el.kind === "Component") {
+        next["comp:" + el.id] = true;
       } else if (el.kind === "DataObject" || el.kind === "Event") {
         next["grp:" + el.systemId + ":" + el.kind] = true;
       }
@@ -362,6 +517,8 @@ export function App() {
         totalWrong={totalWrong}
         totalGaps={totalGaps}
         onCheck={() => m.runCheck(currentSystemId)}
+        onCopyLink={copyViewLink}
+        copied={copied}
         saved={check ? `Checked: ${check.contradictions?.length || 0} contradiction(s), ${check.gaps?.length || 0} gap(s)` : "Validated by Contour on save"}
       />
 
@@ -405,6 +562,8 @@ export function App() {
             saving={saving}
             componentOfFunction={m.componentOfFunction}
             systemNameById={systemNameById}
+            view={pane}
+            onView={setPane}
           />
         )}
 

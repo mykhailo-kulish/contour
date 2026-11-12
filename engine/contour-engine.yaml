@@ -17,11 +17,13 @@ System:
     - Writes Are Validated By The System
   components:
     - name: contour-engine
-      description: The Contour System deployable. Stores, validates and searches Contour specifications,
+      description: "The Contour System deployable. Stores, validates and searches Contour specifications,
         exports them as a neutral graph, owns all Contour data, and serves the Modeler's built-in
         browser Console (the form-based Meanings UI) and the AI Agent's MCP tools from the same
         runtime. The Console's Functions run in-process over the same core; there is no separate UI
-        product. Performs every Function.
+        product. Performs every Function. Its PostgreSQL store is selected by configuration: the
+        local Docker Postgres of the start composition, or a remote managed database such as Amazon
+        RDS/Aurora reached over TLS with short-lived IAM auth tokens."
       rationale:
         - One Core For Every Actor
         - "principle 4: data has a home"
@@ -68,6 +70,8 @@ System:
         - Requirement Deleted
         - Guardrail Stored
         - Guardrail Deleted
+      requirements:
+        - Runs Against Local Or Remote Database
   interfaces:
     - name: Contour MCP Server
       description: Model Context Protocol access for AI Agents, reading and storing Contour specifications
@@ -332,9 +336,7 @@ System:
             outcomes (result + alternatives), plus Unreachable for uses; each maps to one of this
             Function's own outcomes, unmapped continues the main path. Outcomes: the main result
             (green) and named alternatives (amber) with a plain-language when and optional effects.
-            Business rules: behavior prose. Data it touches: chips derived from reads/modifies. A
-            Form/Diagram toggle switches the editor body to a read-only Diagram View of the
-            element's graph (see conventions)."
+            Business rules: behavior prose. Data it touches: chips derived from reads/modifies."
           DataObject/Event: "A schema editor in Contour core type notation (basic, enum, Data Object ref,
             nested type, projection, inline shape, list []/[1..], optional ?), with a live 'As
             written in Contour' preview, or a link to an external spec (AsyncAPI/JSON Schema/Avro).
@@ -361,23 +363,7 @@ System:
           the editor's instant local hints. Confirm-before-remove. Names resolve within the System;
           a step or attachment refers to another element by name, never by id. A Data Object's or
           Event's schema is rendered as separate blocks (root first, then each nested/inline shape
-          as its own block) — the same decomposition when editing and when viewing. For
-          non-definition elements a Form/Diagram toggle switches the center pane to a read-only
-          Diagram View of the element's graph. The Diagram View has zoom, fit and full-screen
-          controls: zoom in, zoom out, reset to 100%, fit-to-view (scale and centre the whole
-          diagram), and expand to full screen (and back); the Modeler can also drag to pan when the
-          diagram overflows its frame. Wheel zoom is smooth and eased — proportional to the scroll
-          amount, not a fixed jump — and keeps the point under the pointer fixed. Dragging to pan
-          never selects the diagram's label text (text selection is suppressed on the diagram
-          surface, and any selection a drag starts is cleared), so panning stays clean. The view
-          opens with nothing highlighted; selecting a node highlights that node and its downstream
-          path — following the relationships in their direction, in full depth (the transitive
-          closure of outgoing edges), each reached node and the edge reaching it at full strength,
-          nothing dimmed. Upstream nodes that point at the selected one are not highlighted. A
-          single click (press and release without dragging) is what selects a node or, on empty
-          canvas, clears the selection; clicking the selected node again also clears it. Zoom, pan,
-          full screen and highlight are presentation over the graph the engine already returned —
-          they re-derive no structure and make no further engine call."
+          as its own block) — the same decomposition when editing and when viewing."
         designSystem:
           font: Roboto (400/500/700), system-ui fallback; monospace (ui-monospace, Menlo, Consolas) for the
             schema notation preview
@@ -389,7 +375,7 @@ System:
             amber: "#ffa726 (has gaps)"
             green: "#66bb6a (complete)"
             panel: "#1e1e1e (cards, grouped field blocks)"
-            accent: "#90caf9 (links, selection, Contour mark, Requirement chips, highlighted diagram node/edge)"
+            accent: "#90caf9 (links, selection, Contour mark, Requirement chips)"
             purple: "#ce93d8 (Guardrail chips)"
             topBar: "#272727 (header)"
             textDim: rgba(255,255,255,0.7) (labels, secondary)
@@ -399,8 +385,7 @@ System:
           styling: Hand-built inline design tokens (no component library); tokens in src/ui/theme.js, global
             chrome in src/ui/styles.css
           controls: 40px tall single-line, 36px in dense rows; floating labels sit on the field border on the
-            panel/background colour; the Diagram View's zoom/fit/full-screen controls are a small
-            cluster of icon buttons overlaid on the diagram frame
+            panel/background colour
       exposes:
         - Explore Models
         - Open Model
@@ -655,8 +640,7 @@ System:
       description: Loads one element's full record and relationships into the Modeler's editor form — the
         detail the light navigation tree does not carry — and hydrates the bounded cross-reference
         set the inspector checks on open. Additionally loads the graph for the selected element and
-        renders it in Diagram View using the Mermaid rendering tool, where the Modeler can zoom,
-        fit, pan and full-screen the diagram and select a node to highlight its downstream path.
+        renders it in Diagram View using the Mermaid rendering tool.
       steps:
         - calls: Retrieve Element
           becomes:
@@ -669,7 +653,7 @@ System:
       alternatives:
         No Such Element:
           when: No element has this id.
-      behavior: "Runs whenever the Modeler selects an element in the tree, a breadcrumb or a reference
+      behavior: Runs whenever the Modeler selects an element in the tree, a breadcrumb or a reference
         chip. Opening an element loads its full record and relationships, then hydrates its
         cross-reference set — the bounded set of neighbour elements the inspector needs to run its
         checks on open (an Actor's used Functions; the Functions that touch an opened Data Object or
@@ -679,17 +663,7 @@ System:
         resolves that target in depth until it invokes no further Function; target Functions are
         rendered alone with only 'steps' relations. Step numbers follow the record's step order and
         are matched to the diagram's relations by verb AND target together, so two steps to the same
-        target with different verbs each keep their own number. The Diagram View is pannable and
-        zoomable: the Modeler can zoom in and out, reset to 100%, fit the whole diagram to the view,
-        drag to pan when the diagram overflows, and expand the diagram to full screen (and back).
-        The view opens with nothing highlighted; selecting a node highlights that node and its
-        downstream path — following the relationships in their direction, in full depth (the
-        transitive closure of outgoing edges), highlighting each reached node and the edge that
-        reaches it at full strength without dimming the rest. Upstream neighbours (the nodes that
-        point at the selected one, such as a Function's callers) are not highlighted. Selecting the
-        node again, or the empty canvas, clears the highlight. Zoom, pan, full screen and in-diagram
-        selection are presentation over the already-fetched graph — they re-derive no structure, add
-        no model content, and make no further call to the engine."
+        target with different verbs each keep their own number.
       requirements:
         - Readable By Business Users
         - Works In A Browser
@@ -1282,6 +1256,14 @@ Requirement:
     description: Check Model reports every gap of Contour v0.5 (Section 3.7) with its next step from
       each direction, top-down and bottom-up, so a model can be completed from whichever end it was
       started.
+  - name: Runs Against Local Or Remote Database
+    description: contour-engine connects to a PostgreSQL database chosen by configuration
+      (CONTOUR_DATABASE_URL), which may be the local Docker Postgres of the start composition or a
+      remote managed database such as Amazon RDS/Aurora. When the target is a managed database, the
+      engine connects over TLS and authenticates with a short-lived IAM auth token regenerated per
+      connection, so no long-lived database password is stored. The same deployable and the same
+      core serve every Actor regardless of where the database runs; the database location is
+      configuration, never a Contour element in a stored model (No Infrastructure In Model).
   - name: Scope Retrieval Is Bounded
     description: Retrieve System Scope returns every element in one System's scope in a fixed, bounded
       number of queries — not one query per element. However many elements a System holds, the whole

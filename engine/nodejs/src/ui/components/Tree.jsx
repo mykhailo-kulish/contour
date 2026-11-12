@@ -122,6 +122,52 @@ function NoteRow({ row }) {
   );
 }
 
+// A small two-tab grouping selector that sits directly under a System node and
+// chooses how that System's Functions nest (By Actor / By Component). Each tab
+// is a pill button; the active one is accented.
+function TabsRow({ row }) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Group Functions by"
+      style={{ display: "flex", gap: 4, padding: `2px 10px 6px ${row.indent}px` }}
+    >
+      {row.tabs.map((t) => {
+        const on = row.value === t.key;
+        return (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={on}
+            onClick={() => { if (!on) row.onPick(t.key); }}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              boxSizing: "border-box",
+              textAlign: "center",
+              background: on ? C.accentBg : "transparent",
+              color: on ? C.accent : C.textDim,
+              border: `1px solid ${on ? C.accent : C.line}`,
+              borderRadius: 16,
+              padding: "0 10px",
+              minHeight: 28,
+              fontSize: 12,
+              fontWeight: 500,
+              letterSpacing: "0.2px",
+              cursor: on ? "default" : "pointer",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Tree({ rows, selected, onSelect, onToggle, footer }) {
   return (
     <aside
@@ -140,6 +186,7 @@ export function Tree({ rows, selected, onSelect, onToggle, footer }) {
       }}
     >
       {rows.map((row, i) => {
+        if (row.isTabs) return <TabsRow key={row.toggleKey || i} row={row} />;
         if (row.isAdd) return <AddRow key={row.toggleKey || i} row={row} />;
         if (row.isNote) return <NoteRow key={i} row={row} />;
         return <ItemRow key={row.id || row.toggleKey || i} row={row} selected={selected} onSelect={onSelect} onToggle={onToggle} />;

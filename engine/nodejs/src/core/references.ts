@@ -157,3 +157,75 @@ export async function reconcileReferences(
 
   return { record, relationships: edges };
 }
+
+// Find Dependents To Heal (Ownership Relations Are Stored, both ways): the elements whose stored
+// record *names* the just-stored target, so re-reconciling each one now resolves a reference that
+// could not resolve when it was first stored (its target did not yet exist). Returns element ids to
+// re-store, never the target itself.
+//
+// A record names the target when:
+//   - a list-reference field (groups / performs / owns / produces / exposes / an Actor's uses)
+//     contains the target's name, or
+//   - a Function step (or alternative effect) targets the name: a bare-name step for any verb, or a
+//     `uses` step written "Interface / Function" whose Interface *or* Function part is the name (so
+//     storing an Interface heals the Functions whose `uses` step routes through it, and storing the
+//     exposed Function heals them too).
+//
+// Scope mirrors resolution (resolveName / resolveUsesStep): a dependent in the target's own System
+// always qualifies; a dependent in another System qualifies only when the target name is unique
+// across the whole model (the only way a cross-System `uses`/`consumes` resolves). Purely a
+// candidate set — Store Element's reconcile decides what actually becomes an edge, so a false
+// positive costs only an idempotent re-store.
+export async function findDependents(
+  c: PoolClient,
+  target: { id: string; name: string; systemId: string | null },
+): Promise<string[]> {
+  const name = (target.name ?? "").trim();
+  if (!name) return [];
+  const scopeId = target.systemId ?? target.id; // a System is its own scope
+
+  // The target's name is unique across the model → a neighbour System may resolve to it.
+  const dup = await c.query(
+    "SELECT 1 FROM contour_element WHERE name = $1 AND id <> $2 LIMIT 2", [name, target.id]);
+  const uniqueAnywhere = dup.rowCount === 0;
+
+  // Candidate records: those in the target's scope, plus (when the name is unique) every record
+  // that mentions the name anywhere. jsonb::text containment is a coarse, index-free prefilter; the
+  // precise name test is done in JS below and, ultimately, by reconcile itself.
+  const rows = (await c.query<{ id: string; name: string; element_type: string; body: Body }>(
+    `SELECT e.id, e.name, e.element_type, r.body
+     FROM contour_element e JOIN contour_record r ON r.element_id = e.id
+     WHERE e.id <> $1
+       AND ( COALESCE(e.system_id, e.id) = $2 OR $3 = true )
+       AND r.body::text LIKE '%' || $4 || '%'`,
+    [target.id, scopeId, uniqueAnywhere, name],
+  )).rows;
+
+  const out: string[] = [];
+  for (const row of rows) {
+    if (namesTarget(row.element_type, row.body, name)) out.push(row.id);
+  }
+  return out;
+}
+
+// Does this record name `target` through any reference a Store Element reconcile would turn into an
+// edge? List-reference fields for the element's type, and — for a Function — its step and
+// alternative-effect targets, including both sides of a `uses` "Interface / Function" step.
+function namesTarget(elementType: string, body: Body, target: string): boolean {
+  for (const { field } of LIST_REFERENCE_FIELDS[elementType] ?? []) {
+    if (listedNames(body, field).includes(target)) return true;
+  }
+  if (elementType === ElementType.Function) {
+    for (const { verb, target: t } of stepReferences(body)) {
+      if (verb === Verb.uses) {
+        const slash = t.lastIndexOf("/");
+        const iface = slash >= 0 ? t.slice(0, slash).trim() : "";
+        const fn = (slash >= 0 ? t.slice(slash + 1) : t).trim();
+        if (iface === target || fn === target) return true;
+      } else if (t === target) {
+        return true;
+      }
+    }
+  }
+  return false;
+}

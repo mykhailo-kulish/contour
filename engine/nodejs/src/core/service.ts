@@ -8,7 +8,7 @@ import { ElementType, scopeOf, type StoreElementRequest } from "./contour.js";
 import {
   ElementRejected, InvalidDefinition, NameTaken, NoSuchRevision, NotFound, StillReferenced,
 } from "./errors.js";
-import { reconcileReferences } from "./references.js";
+import { reconcileReferences, findDependents } from "./references.js";
 import { recordSearchText } from "./searchText.js";
 import { validateElement } from "./validation.js";
 import { diffBodies, type Change } from "./diff.js";
@@ -53,7 +53,15 @@ export interface DefinitionRow {
 // Element Functions
 // ---------------------------------------------------------------------------
 export async function storeElement(req: StoreElementRequest): Promise<ElementRow> {
-  return withTransaction(async (c) => {
+  return withTransaction((c) => storeElementTx(c, req, new Set<string>()));
+}
+
+// One Store Element inside an existing transaction. `visited` carries the element ids already
+// (re-)stored in this transaction so the dependent-healing pass below cannot loop (a target heals
+// its dependents, and a dependent must never heal back to a target already stored this round).
+async function storeElementTx(
+  c: PoolClient, req: StoreElementRequest, visited: Set<string>,
+): Promise<ElementRow> {
     const existing = req.element.id
       ? (await c.query<ElementRow>("SELECT * FROM contour_element WHERE id = $1", [req.element.id])).rows[0] ?? null
       : null;
@@ -126,8 +134,50 @@ export async function storeElement(req: StoreElementRequest): Promise<ElementRow
         [randomUUID(), el.id, rel.toElementId, rel.verb],
       );
     }
+
+    // Heal dependents (Ownership Relations Are Stored, both ways): an element stored *before* this
+    // one may name it in a list field or a Function step, with no edge because this target did not
+    // yet exist — and a store only ever reconciles the element being stored, never its dependents.
+    // Now that this element exists, re-store each dependent unchanged so its own reconcile resolves
+    // the reference into the edge it was missing. `visited` (this element included) bounds the
+    // pass: each dependent is re-stored at most once per transaction, and a dependent never heals
+    // back to a target already stored this round, so the cascade terminates.
+    visited.add(el.id);
+    const dependents = await findDependents(c, { id: el.id, name: el.name, systemId: el.system_id });
+    for (const depId of dependents) {
+      if (visited.has(depId)) continue;
+      const dep = await retrieveElementTx(c, depId);
+      if (!dep) continue;
+      await storeElementTx(c, {
+        element: {
+          id: dep.element.id, name: dep.element.name,
+          elementType: dep.element.element_type as never, systemId: dep.element.system_id,
+        },
+        record: dep.record?.body ?? {},
+        relationships: dep.relationships
+          .filter((r) => r.from_element_id === dep.element.id)
+          .map((r) => ({ verb: r.verb as never, toElementId: r.to_element_id })),
+        changeNote: "Reference healed: target element became available",
+        changedBy: req.changedBy ?? null,
+      }, visited);
+    }
     return el;
-  });
+}
+
+// Read one element (row, record body, outgoing relationships) on an existing transaction client —
+// the dependent-healing pass's inputs, read inside the same transaction as the write.
+async function retrieveElementTx(c: PoolClient, id: string): Promise<{
+  element: ElementRow;
+  record: { body: Record<string, unknown> } | null;
+  relationships: { from_element_id: string; to_element_id: string; verb: string }[];
+} | null> {
+  const element = (await c.query<ElementRow>("SELECT * FROM contour_element WHERE id = $1", [id])).rows[0];
+  if (!element) return null;
+  const record = (await c.query<{ body: Record<string, unknown> }>(
+    "SELECT body FROM contour_record WHERE element_id = $1", [id])).rows[0] ?? null;
+  const relationships = (await c.query<{ from_element_id: string; to_element_id: string; verb: string }>(
+    "SELECT from_element_id, to_element_id, verb FROM contour_relationship WHERE from_element_id = $1", [id])).rows;
+  return { element, record, relationships };
 }
 
 const RELATIONSHIP_SELECT = `
@@ -195,7 +245,7 @@ export async function retrieveElements(ids: string[]): Promise<{
 // Retrieve System Scope: a light, batch index of one System's scope — the System itself included
 // (scopeOf a System is the System) — for a caller building the System's navigation tree. Returns,
 // per element, only the summary (id, name, elementType) and the record's name-reference lists the
-// tree nests by (uses, requirements, guardrails) — no full body, no relationships. Bounded: two
+// tree nests by (uses, performs, requirements, guardrails) — no full body, no relationships. Bounded: two
 // queries (elements, then their records) however many elements the System holds, never one per
 // element (Requirement: Scope Retrieval Is Bounded). Read-only.
 export interface ScopeEntry {
@@ -203,6 +253,7 @@ export interface ScopeEntry {
   name: string;
   elementType: string;
   uses: string[];
+  performs: string[];
   requirements: string[];
   guardrails: string[];
 }
@@ -255,6 +306,7 @@ export async function retrieveSystemScope(systemId: string): Promise<{
         name: e.name,
         elementType: e.element_type,
         uses: nameList(body.uses),
+        performs: nameList(body.performs),
         requirements: nameList(body.requirements),
         guardrails: nameList(body.guardrails),
       };

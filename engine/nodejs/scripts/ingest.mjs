@@ -3,7 +3,6 @@
 // store_guardrail, store_element, check_model_tool.
 //
 // Usage: node scripts/ingest.mjs ../contour-engine.yaml [http://localhost:8000/mcp]
-// (run from engine/nodejs; the record lives one level up at engine/contour-engine.yaml)
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 
