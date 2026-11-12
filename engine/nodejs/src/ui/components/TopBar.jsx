@@ -25,7 +25,7 @@ function Crumb({ label, onPick, active, sep }) {
   );
 }
 
-export function TopBar({ crumbs, totalWrong, totalGaps, onCheck, saved }) {
+export function TopBar({ crumbs, totalWrong, totalGaps, onCheck, onCopyLink, copied, saved }) {
   const wrongColor = totalWrong > 0 ? C.red : C.green;
   const wrongBg = totalWrong > 0 ? C.redBg : C.greenBg;
   return (
@@ -58,6 +58,31 @@ export function TopBar({ crumbs, totalWrong, totalGaps, onCheck, saved }) {
       <div style={{ flex: "1 1 40px" }} />
 
       <span style={{ fontSize: 13, color: C.textDim }}>{saved}</span>
+
+      <button
+        onClick={onCopyLink}
+        title="Copy a link to this view"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          background: "transparent",
+          border: `1px solid ${copied ? C.accentLine : C.lineStrong}`,
+          color: copied ? C.accent : C.text,
+          borderRadius: 4,
+          padding: "0 14px",
+          height: 40,
+          fontSize: 13,
+          fontWeight: 500,
+          cursor: "pointer",
+        }}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" />
+          <path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" />
+        </svg>
+        <span style={{ textTransform: "uppercase", letterSpacing: "0.4px" }}>{copied ? "Link copied" : "Copy link"}</span>
+      </button>
 
       <button
         onClick={onCheck}

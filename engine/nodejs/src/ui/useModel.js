@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, CatalogUnavailable, Rejected } from "./api.js";
 import {
-  asList, readAlternatives, readSchema, readSteps, statusOf,
+  asList, readAlternatives, readResponse, readSchema, readShape, readSteps, statusOf,
 } from "./model.js";
 
 // An Interface's `exposes` is a list of Function names or an object keyed by
@@ -26,6 +26,54 @@ function exposedNames(v) {
   if (typeof v === "string") return [v];
   if (typeof v === "object") return Object.keys(v);
   return [];
+}
+
+// Normalize an Interface's `exposes` into the editing model: an ordered list of
+// { fn, operation, request, responses } rows. The stored form is either a bare
+// name list (the binding's conventions cover operation/request/responses — a
+// Web UI, say) or an object keyed by Function name, each value an
+// { operation, request, responses } block (contour.md §3.3). `operation` stays
+// text; `request` becomes a shape editor model (readShape), and each
+// `responses` value becomes a { code, body } editing model (readResponse) —
+// the same universal shape machinery Data Objects and Events use.
+function readExposes(v) {
+  const asText = (x) => (x == null ? "" : typeof x === "string" ? x : JSON.stringify(x));
+  const readResponses = (r) => {
+    const out = {};
+    if (r && typeof r === "object" && !Array.isArray(r)) {
+      Object.entries(r).forEach(([k, val]) => { out[k] = readResponse(val); });
+    }
+    return out;
+  };
+  const row = (fn, block) => {
+    if (block == null || typeof block !== "object" || Array.isArray(block)) {
+      return { fn, operation: "", request: null, responses: {} };
+    }
+    return {
+      fn,
+      operation: asText(block.operation),
+      request: block.request == null || block.request === "" ? null : readShape(block.request),
+      responses: readResponses(block.responses),
+    };
+  };
+  if (v == null) return [];
+  if (Array.isArray(v)) return v.map((n) => ({ fn: String(n), operation: "", request: null, responses: {} }));
+  if (typeof v === "string") return [{ fn: v, operation: "", request: null, responses: {} }];
+  if (typeof v === "object") return Object.entries(v).map(([fn, block]) => row(fn, block));
+  return [];
+}
+
+// An Interface's `binding` is a free-form block whose one fixed key is `style`;
+// every other key is interpreted by that style's binding (contour.md §3.3). For
+// editing, keep `style` apart and the remaining keys as ordered key/value rows,
+// each value kept as text (a nested object round-trips as its JSON text).
+function readBinding(b) {
+  if (!b || typeof b !== "object") return { style: "", keys: [] };
+  const style = typeof b.style === "string" ? b.style : "";
+  const keys = Object.entries(b)
+    .filter(([k]) => k !== "style")
+    .map(([k, v]) => ({ k, v: typeof v === "string" ? v : JSON.stringify(v) }));
+  return { style, keys };
 }
 
 // Shape a loaded element into the editing model the components consume. Works
@@ -52,9 +100,17 @@ function toEl(full) {
     alts: kind === "Function" ? readAlternatives(body.alternatives) : [],
     behavior: typeof body.behavior === "string" ? body.behavior : "",
     uses: asList(body.uses),
+    performs: kind === "Component" ? asList(body.performs) : [],
+    owns: kind === "Component" ? asList(body.owns) : [],
     requirements: asList(body.requirements),
     guardrails: asList(body.guardrails),
     schema: kind === "DataObject" || kind === "Event" ? readSchema(body) : null,
+    // Interface channel fields (contour.md §3.3): who it serves, its binding
+    // (style + free-form keys), and the Functions it exposes with their
+    // operation/request/responses.
+    serves: kind === "Interface" ? (typeof body.serves === "string" ? body.serves : "") : "",
+    binding: kind === "Interface" ? readBinding(body.binding) : { style: "", keys: [] },
+    exposes: kind === "Interface" ? readExposes(body.exposes) : [],
   };
 }
 
@@ -81,12 +137,18 @@ function toScopeEl(entry, systemId) {
     alts: [],
     behavior: "",
     uses: Array.isArray(entry.uses) ? entry.uses : [],
+    performs: Array.isArray(entry.performs) ? entry.performs : [],
+    owns: [],
     requirements: Array.isArray(entry.requirements) ? entry.requirements : [],
     guardrails: Array.isArray(entry.guardrails) ? entry.guardrails : [],
     // Keep the same empty-but-shaped schema a not-hydrated typed element had on
     // the old summary path, so the editor never reads `.mode` off null before
     // the full record loads.
     schema: kind === "DataObject" || kind === "Event" ? readSchema({}) : null,
+    // Interface channel fields stay empty until the full record hydrates.
+    serves: "",
+    binding: { style: "", keys: [] },
+    exposes: [],
   };
 }
 
@@ -250,6 +312,21 @@ export function useModel() {
     await hydrateElements(ids);
   }, [hydrateElements]);
 
+  // Hydrate every element of one System matching one of `kinds`, in one batch
+  // call. The light System scope carries no `exposes` (an Interface) nor
+  // outcomes (a Function), so the Function editor's "Exposed by" panel and the
+  // Interface editor's exposes/responses need the relevant records loaded.
+  // Called lazily when an Interface is opened (Functions, to offer real
+  // outcomes) and when a Function is opened (Interfaces, to show what exposes it).
+  const hydrateKindOf = useCallback(async (systemId, kinds) => {
+    if (!systemId) return;
+    const set = new Set(kinds);
+    const ids = Object.values(elementsRef.current || {})
+      .filter((e) => e.systemId === systemId && set.has(e.kind))
+      .map((e) => e.id);
+    if (ids.length) await hydrateElements(ids);
+  }, [hydrateElements]);
+
   // A world keyed by id for cross-references; carries each element's System for
   // per-System scoping and the fields the dropdowns/outcome-mapping need.
   const world = useMemo(() => {
@@ -264,7 +341,9 @@ export function useModel() {
         altNames: el.kind === "Function" ? (el.alts || []).map((a) => a.name).filter(Boolean) : undefined,
         exposes: el.kind === "Interface" ? exposedNames(el.body && el.body.exposes) : undefined,
         serves: el.kind === "Interface" ? (el.body && el.body.serves) || "" : undefined,
+        bindingStyle: el.kind === "Interface" ? (el.body && el.body.binding && el.body.binding.style) || "" : undefined,
         performs: el.kind === "Component" ? asList(el.body && el.body.performs) : undefined,
+        produces: el.kind === "Component" ? asList(el.body && el.body.produces) : undefined,
       };
     });
     return w;
@@ -364,7 +443,7 @@ export function useModel() {
   return {
     elements, systemIds, world, defs, reqDefs, grDefs, error, setError,
     check, runCheck, status, scopeOf, componentOfFunction,
-    refetchElement, hydrateCrossRefs, hydrateFunctionTargets, reload: load, save, defineReq, defineGr,
+    refetchElement, hydrateCrossRefs, hydrateFunctionTargets, hydrateKindOf, reload: load, save, defineReq, defineGr,
   };
 }
 

@@ -6,23 +6,28 @@
 import { C } from "../theme.js";
 import { STEP_VERBS, EFFECT_VERBS, VERB_TEXT, typeLabel } from "../api.js";
 import { AddButton, Block, Field, IconBtn, Muted, SectionHead } from "./primitives.jsx";
+import { SearchableSelect } from "./SearchableSelect.jsx";
 import { DescriptionField } from "./EditorHeader.jsx";
 import { smallSelectStyle, selectStyle, inputStyle } from "../theme.js";
 import { dataTouched, calleeOutcomes } from "../model.js";
 
-// Flat target options for a step verb (everything except `uses`, which is
-// grouped — see usesGroups). Scoped per contour.md:
+// Flat target options for a step verb (everything except `uses` and
+// `consumes`, which are grouped by System — see usesGroups / eventGroups).
+// Scoped per contour.md:
 //   reads/modifies → Data Objects of the same System
-//   produces/consumes → Events of the same System
+//   produces → an Event of the same System (you only produce your own Events)
 //   calls → Functions of the SAME COMPONENT as the editing Function; if the
 //           System isn't split into Components yet, the System's Functions.
+// `consumes` is NOT flat here: it subscribes to an Event another Component
+// produces (usually in another System), so its options are every Event in the
+// model, grouped by System — see eventGroups and the Step renderer.
 function targetOptions(verb, world, self, componentOfFunction) {
   const none = [{ v: "", l: verb ? "Choose…" : "Choose what it does first" }];
   const sysId = self.systemId;
   const inSystem = (id) => sysId == null || world[id].systemId === sysId;
   const ofKind = (k) => Object.keys(world).filter((id) => world[id].kind === k && inSystem(id)).map((id) => ({ v: world[id].name, l: world[id].name }));
   if (verb === "reads" || verb === "modifies") return none.concat(ofKind("DataObject"));
-  if (verb === "produces" || verb === "consumes") return none.concat(ofKind("Event"));
+  if (verb === "produces") return none.concat(ofKind("Event"));
   if (verb === "calls") {
     const comp = componentOfFunction ? componentOfFunction({ kind: "Function", name: self.name, systemId: sysId }) : null;
     let fnNames;
@@ -58,6 +63,41 @@ function usesGroups(world, selfSystemId, systemNameById) {
       arr.push(opt);
       bySystem.set(iface.systemId, arr);
     });
+  });
+  const groups = [];
+  const push = (sid) => {
+    const opts = bySystem.get(sid);
+    if (opts && opts.length) groups.push({ system: systemNameById[sid] || "System", options: opts });
+  };
+  push(selfSystemId); // own System first
+  [...bySystem.keys()].filter((sid) => sid !== selfSystemId).sort((a, b) => (systemNameById[a] || "").localeCompare(systemNameById[b] || "")).forEach(push);
+  return groups;
+}
+
+// Grouped options for a `consumes` step: EVERY Event in the whole model,
+// grouped by System with the own System first, each option labelled with the
+// Event's owning Component (when derivable) to disambiguate same-named Events.
+// A consumes step subscribes to an Event another Component produces — usually
+// in another System (contour.md §3.4) — so, unlike `produces`, the picker is
+// never scoped to the own System. The stored value is the bare Event name
+// (names resolve across the model for consumes); the label adds context only.
+// Returns [{ system, options:[{v,l}] }].
+function eventGroups(world, selfSystemId, systemNameById) {
+  // owning Component per (systemId, eventName), from each Component's produces.
+  const ownerOf = (ev) => {
+    const comp = Object.values(world).find(
+      (w) => w.kind === "Component" && w.systemId === ev.systemId && (w.produces || []).indexOf(ev.name) >= 0,
+    );
+    return comp ? comp.name : null;
+  };
+  const bySystem = new Map(); // systemId -> [{v,l}]
+  Object.values(world).forEach((ev) => {
+    if (ev.kind !== "Event") return;
+    const owner = ownerOf(ev);
+    const opt = { v: ev.name, l: owner ? `${ev.name}  ·  ${owner}` : ev.name };
+    const arr = bySystem.get(ev.systemId) || [];
+    arr.push(opt);
+    bySystem.set(ev.systemId, arr);
   });
   const groups = [];
   const push = (sid) => {
@@ -127,16 +167,22 @@ function Step({ i, s, total, ownOutcomes, world, selfId, selfName, selfSystemId,
         <select aria-label="Step verb" value={s.verb} onChange={(e) => onChange({ verb: e.target.value, target: "", becomes: {} })} style={{ ...selectStyle, flex: "0 1 330px" }}>
           {verbOptions(keys).map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
         </select>
-        {s.verb === "uses" ? (
-          <select aria-label="Step target" value={s.target} onChange={(e) => onChange({ target: e.target.value, becomes: {} })} style={{ ...selectStyle, flex: "1 1 220px" }}>
-            <option value="">{s.target && !usesGroups(world, selfSystemId, systemNameById).some((g) => g.options.some((o) => o.v === s.target)) ? s.target : "Choose an Interface / Function…"}</option>
-            {usesGroups(world, selfSystemId, systemNameById).map((g) => (
-              <optgroup key={g.system} label={g.system}>
-                {g.options.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
-              </optgroup>
-            ))}
-          </select>
-        ) : (
+        {s.verb === "uses" || s.verb === "consumes" ? (() => {
+          const groups = s.verb === "uses"
+            ? usesGroups(world, selfSystemId, systemNameById)
+            : eventGroups(world, selfSystemId, systemNameById);
+          const placeholder = s.verb === "uses" ? "Choose an Interface / Function…" : "Choose an Event…";
+          return (
+            <SearchableSelect
+              ariaLabel="Step target"
+              groups={groups}
+              value={s.target}
+              placeholder={placeholder}
+              onChange={(v) => onChange({ target: v, becomes: {} })}
+              style={{ flex: "1 1 220px" }}
+            />
+          );
+        })() : (
           <select aria-label="Step target" value={s.target} onChange={(e) => onChange({ target: e.target.value, becomes: {} })} style={{ ...selectStyle, flex: "1 1 220px" }}>
             {targetOptions(s.verb, world, { id: selfId, name: selfName, systemId: selfSystemId }, componentOfFunction).map((o, k) => <option key={k} value={o.v}>{o.l}</option>)}
           </select>
@@ -290,6 +336,42 @@ export function FunctionEditor({ el, world, elementsById, componentOfFunction, s
           })}
         </div>
       </div>
+
+      {/* Exposed by: the Interfaces that expose this Function (read-only,
+          derived from each Interface's `exposes`). A Function no Interface
+          exposes is private. Clicking a row opens that Interface. */}
+      <ExposedBy fnName={el.name} fnSystemId={el.systemId} world={world} onOpen={onOpen} />
     </>
+  );
+}
+
+// Read-only panel: which Interfaces expose this Function, within its System.
+// Derived from the authoritative `exposes` on each Interface — the mirror of
+// the Interface editor's exposes list, so the two never disagree.
+function ExposedBy({ fnName, fnSystemId, world, onOpen }) {
+  const rows = Object.entries(world || {})
+    .filter(([, w]) => w.kind === "Interface"
+      && (fnSystemId == null || w.systemId === fnSystemId)
+      && (w.exposes || []).indexOf(fnName) >= 0)
+    .map(([id, w]) => ({ id, name: w.name, serves: w.serves, style: w.bindingStyle }));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <span style={{ fontSize: 13, fontWeight: 500, color: C.text }}>
+        Exposed by <span style={{ fontWeight: 400, color: C.textDim }}>(Interfaces that make it reachable)</span>
+      </span>
+      {rows.length === 0 && <Muted style={{ fontSize: 13 }}>No Interface exposes it — this Function is private.</Muted>}
+      {rows.map((r) => (
+        <button key={r.id} onClick={() => onOpen(r.id)}
+          style={{ textAlign: "left", display: "flex", alignItems: "center", gap: 12, background: C.panel, border: `1px solid ${C.line}`, borderRadius: 4, padding: "12px 16px", color: C.text, cursor: "pointer", minHeight: 52 }}>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: "block", fontSize: 15, fontWeight: 500 }}>{r.name}</span>
+            <span style={{ display: "block", fontSize: 13, color: C.textDim, marginTop: 2 }}>
+              {r.serves ? `serves ${r.serves}` : "no caller yet"}{r.style ? ` · ${r.style}` : ""}
+            </span>
+          </span>
+          <span style={{ color: C.textDim, fontSize: 18 }} aria-hidden="true">›</span>
+        </button>
+      ))}
+    </div>
   );
 }

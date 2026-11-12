@@ -8,7 +8,6 @@
 //   node scripts/export.mjs <System name> <outFile> [http://localhost:8000/mcp]
 // e.g.
 //   node scripts/export.mjs Contour ../contour-engine.yaml http://localhost:8000/mcp
-//   (run from engine/nodejs; the record lives one level up at engine/contour-engine.yaml)
 import { writeFileSync } from "node:fs";
 
 const SYSTEM_NAME = process.argv[2];

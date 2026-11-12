@@ -42,12 +42,16 @@ export interface GraphNode {
 // (the verb by default; for a uses edge, the Interface that carries it). On a Function View, a
 // Function's own step edge also carries `ordinal` — the step's 1-based position in the record's
 // steps[] (a stored-state fact, not notation; §4 still holds).
+// On a Function View, an edge that realises a long-form alternative's `effects` carries no
+// `ordinal` (it is not a main-path step) and instead carries `hint` — the alternative's `when`
+// text — so a consumer can show it as an on-hover explanation of the conditional branch.
 export interface GraphEdge {
   from: string;
   to: string;
   verb: string;
   label: string;
   ordinal?: number;
+  hint?: string;
 }
 export interface Graph {
   nodes: GraphNode[];
@@ -187,6 +191,36 @@ function orderedSteps(body: Record<string, unknown> | undefined): { verb: string
   return out;
 }
 
+// Read a Function record's long-form alternative effects, keyed "verb\0targetName" -> the
+// alternative's `when` text. These are the conditional branches (contour.md §3.3): an alternative
+// with `effects` does something (e.g. produces an Event) when its condition holds. Their edges are
+// NOT main-path steps, so they carry no ordinal; instead each carries its `when` as a hint, so the
+// diagram shows the branch without a sequence number and explains it on hover. When several
+// alternatives map the same verb+target, their `when` texts are joined (the single stored edge is
+// shared), so no branch's explanation is lost.
+function alternativeEffectHints(body: Record<string, unknown> | undefined): Map<string, string> {
+  const hints = new Map<string, string>();
+  const alts = body?.alternatives;
+  if (!alts || typeof alts !== "object" || Array.isArray(alts)) return hints;
+  for (const alt of Object.values(alts as Record<string, unknown>)) {
+    if (!alt || typeof alt !== "object") continue;
+    const when = typeof (alt as Record<string, unknown>).when === "string"
+      ? ((alt as Record<string, unknown>).when as string).trim() : "";
+    const effects = (alt as Record<string, unknown>).effects;
+    if (!Array.isArray(effects)) continue;
+    for (const e of effects) {
+      if (!e || typeof e !== "object") continue;
+      const entry = Object.entries(e as Record<string, unknown>).find(([k]) => k !== "becomes");
+      if (!entry) continue;
+      const key = `${entry[0]}\u0000${stepTargetName(entry[1])}`;
+      if (!when) { if (!hints.has(key)) hints.set(key, ""); continue; }
+      const prev = hints.get(key);
+      hints.set(key, prev ? `${prev}; ${when}` : when);
+    }
+  }
+  return hints;
+}
+
 // Function View (Export Graph given a Function): a step-ordered, depth-resolved projection.
 //   - the focus Function, plus the Actors/Functions that invoke it (inbound uses/calls callers);
 //   - the focus's own steps as step edges, each tagged with its 1-based position in the record's
@@ -196,13 +230,28 @@ function orderedSteps(body: Record<string, unknown> | undefined): { verb: string
 //     included carrying only its own ordered step edges (none of its callers/performs/exposes),
 //     recursing until a Function invokes no further Function (a cycle is entered at most once).
 // Everything derives from stored state; no notation is assigned (ordinal is a stored fact).
-async function exportFunctionGraph(focus: El): Promise<Graph> {
+//
+// The depth-resolved expansion is shared with the Actor View (an Actor's used Functions are each
+// expanded the same way): `seeds` are the Function ids whose steps are drawn, `callersOf` the one
+// Function whose inbound callers are also drawn (none for an Actor View), and `extraNodes`/
+// `extraEdges` seed any element and edge the caller wants kept verbatim (the Actor node, and its
+// `uses` edges to those Functions).
+async function expandFunctionGraph(
+  seeds: string[],
+  callersOf: string | null,
+  extraNodes: El[],
+  extraEdges: Rel[],
+): Promise<Graph> {
   const nodes = new Map<string, El>();        // id -> element row (deduped)
   const byIdAll = new Map<string, El>();      // every element seen across batches (for labelling)
-  const allRels: Rel[] = [];                  // every relationship seen across batches (for labelling)
-  // Kept raw edges, in discovery order, before labelling: { rel, ordinal? }.
-  const kept = new Map<string, { r: Rel; ordinal?: number }>();
+  const allRels: Rel[] = [...extraEdges];     // every relationship seen across batches (for labelling)
+  // Kept raw edges, in discovery order, before labelling: { rel, ordinal?, hint? }.
+  const kept = new Map<string, { r: Rel; ordinal?: number; hint?: string }>();
   const expanded = new Set<string>();         // Function ids whose steps are drawn
+
+  // Verbatim seed nodes (e.g. the Actor) and edges (e.g. Actor --uses--> Function).
+  for (const e of extraNodes) { nodes.set(e.id, e); if (!byIdAll.has(e.id)) byIdAll.set(e.id, e); }
+  for (const r of extraEdges) kept.set(`${r.from_element_id}->${r.to_element_id}:${r.verb}`, { r });
 
   // Assign ordinals to one Function's outgoing step edges, in record order, matched by verb+name.
   function numberSteps(fnId: string, steps: { verb: string; targetName: string }[], outRels: Rel[], byId: Map<string, El>) {
@@ -224,7 +273,7 @@ async function exportFunctionGraph(focus: El): Promise<Graph> {
     return ord;
   }
 
-  let frontier: string[] = [focus.id];
+  let frontier: string[] = [...new Set(seeds)];
   while (frontier.length) {
     const batch = frontier.filter((id) => !expanded.has(id));
     batch.forEach((id) => expanded.add(id));
@@ -254,20 +303,35 @@ async function exportFunctionGraph(focus: El): Promise<Graph> {
       // Step edges out of this Function, numbered by the record's step order.
       const outRels = rels.filter((r) => r.from_element_id === fnId && STEP_VERBS.has(r.verb));
       const ordByRel = numberSteps(fnId, orderedSteps(fnRow.body), outRels, byId);
+      // Long-form alternative effects: the conditional branches, keyed verb+target. An edge that
+      // realises one carries no step ordinal and instead its alternative's `when` as a hint.
+      const altHints = alternativeEffectHints(fnRow.body);
       for (const r of outRels) {
         const to = byId.get(r.to_element_id);
         if (!to) continue;
         if (!nodes.has(to.id)) nodes.set(to.id, to);
         const key = `${r.from_element_id}->${r.to_element_id}:${r.verb}`;
-        kept.set(key, { r, ordinal: ordByRel.get(key) });
+        const ordinal = ordByRel.get(key);
+        // A conditional branch (an alternative's effect) renders without a sequence number and
+        // carries its `when` as a hint. When the same verb+target is also a main-path step, the
+        // step wins the ordinal (it is on the main path); otherwise the edge is number-less.
+        const altKey = `${r.verb}\u0000${to.name}`;
+        const hasHint = altHints.has(altKey);
+        if (hasHint && ordinal === undefined) {
+          const when = altHints.get(altKey) ?? "";
+          kept.set(key, { r, hint: when || undefined });
+        } else {
+          kept.set(key, { r, ordinal });
+        }
         // Descend into Functions this one calls/uses.
         if ((r.verb === Verb.calls || r.verb === Verb.uses) && to.element_type === ElementType.Function && !expanded.has(to.id)) {
           next.push(to.id);
         }
       }
 
-      // Callers of the *focus only* (inbound uses/calls from an Actor or Function).
-      if (fnId === focus.id) {
+      // Callers of the requested Function only (inbound uses/calls from an Actor or Function).
+      // An Actor View passes no callersOf, so nothing inbound is drawn for its seed Functions.
+      if (callersOf && fnId === callersOf) {
         for (const r of rels) {
           if (r.to_element_id !== fnId) continue;
           if (r.verb !== Verb.uses && r.verb !== Verb.calls) continue;
@@ -288,7 +352,7 @@ async function exportFunctionGraph(focus: El): Promise<Graph> {
   // (the target's `exposes` relationship is only fetched when that target is expanded).
   const ifacesOfFn = interfacesOfFunction(allRels, byIdAll);
   const edges: GraphEdge[] = [];
-  for (const { r, ordinal } of kept.values()) {
+  for (const { r, ordinal, hint } of kept.values()) {
     let label: string = r.verb;
     if (r.verb === Verb.uses) {
       const ifaceId = (ifacesOfFn.get(r.to_element_id) ?? [])[0];
@@ -297,22 +361,52 @@ async function exportFunctionGraph(focus: El): Promise<Graph> {
     }
     const edge: GraphEdge = { from: r.from_element_id, to: r.to_element_id, verb: r.verb, label };
     if (ordinal !== undefined) edge.ordinal = ordinal;
+    if (hint) edge.hint = hint;
     edges.push(edge);
   }
 
   return { nodes: [...nodes.values()].map(toNode), edges };
 }
 
+// Function View: expand the focus Function's steps in depth, and also draw the focus's inbound
+// callers (Actors/Functions that invoke it).
+function exportFunctionGraph(focus: El): Promise<Graph> {
+  return expandFunctionGraph([focus.id], focus.id, [], []);
+}
+
+// Actor View: the Actor node, plus each Function it `uses` expanded in depth exactly like a
+// Function View (its steps, recursively) — so the Actor's Functions are not bare nodes but show
+// what they do. The Actor's own `uses` edges to those Functions are kept verbatim; no inbound
+// callers are drawn (the Actor is the caller). Everything else derives from stored state.
+async function exportActorGraph(focus: El): Promise<Graph> {
+  const rels = (await query<Rel>(
+    "SELECT from_element_id, to_element_id, verb FROM contour_relationship WHERE from_element_id = $1 AND verb = $2",
+    [focus.id, Verb.uses],
+  )).rows;
+  // Only the Functions the Actor uses are seeds (an Actor uses Functions; §3).
+  const targetIds = [...new Set(rels.map((r) => r.to_element_id))];
+  const targets = targetIds.length
+    ? (await query<El>("SELECT id, name, element_type, system_id FROM contour_element WHERE id = ANY($1::uuid[])", [targetIds])).rows
+    : [];
+  const byId = new Map(targets.map((e) => [e.id, e]));
+  const seeds = targets.filter((e) => e.element_type === ElementType.Function).map((e) => e.id);
+  const usedRels = rels.filter((r) => byId.get(r.to_element_id)?.element_type === ElementType.Function);
+  await attachRecords([focus]);
+  return expandFunctionGraph(seeds, null, [focus], usedRels);
+}
+
 // Export Graph (the Function): one id, one graph. A System id yields the whole-System graph;
-// a Function id yields the step-ordered, depth-resolved Function View; any other element id yields
-// a graph scoped to that element and its direct relationships. A System id and an element id are
-// the same namespace — the element row's type decides which projection is built — so there is one
-// entry point, not several.
+// a Function id yields the step-ordered, depth-resolved Function View; an Actor id yields the
+// Actor and each Function it uses expanded in depth (the same step resolution as a Function View);
+// any other element id yields a graph scoped to that element and its direct relationships. A
+// System id and an element id are the same namespace — the element row's type decides which
+// projection is built — so there is one entry point, not several.
 export async function exportGraph(id: string): Promise<Graph> {
   const el = (await query<El>(
     "SELECT id, name, element_type, system_id FROM contour_element WHERE id = $1", [id])).rows[0];
   if (!el) throw new NotFound(`No element has id ${id}`);
   if (el.element_type === ElementType.System) return exportSystemGraph(id);
   if (el.element_type === ElementType.Function) return exportFunctionGraph(el);
+  if (el.element_type === ElementType.Actor) return exportActorGraph(el);
   return exportElementGraph(el);
 }

@@ -7,11 +7,12 @@ import { useEffect, useState } from "react";
 import { C } from "../theme.js";
 import { EditorHeader, DescriptionField, descLabel } from "./EditorHeader.jsx";
 import { FunctionEditor } from "./FunctionEditor.jsx";
+import { InterfaceEditor } from "./InterfaceEditor.jsx";
 import { SchemaEditor } from "./SchemaEditor.jsx";
 import { ReqGuardPanel } from "./ReqGuardPanel.jsx";
 import { DiagramView } from "./DiagramView.jsx";
 import { AddButton } from "./primitives.jsx";
-import { writeSteps, writeAlternatives, writeSchema, fmtType } from "../model.js";
+import { writeSteps, writeAlternatives, writeSchema, writeBinding, writeExposes, fmtType } from "../model.js";
 
 const isDef = (k) => k === "Requirement" || k === "Guardrail";
 
@@ -28,9 +29,31 @@ function buildRecord(buf, world) {
     if (String(buf.behavior || "").trim()) body.behavior = buf.behavior.trim();
   }
   if (buf.kind === "Actor" && buf.uses.length) body.uses = buf.uses;
+  // A Component's allocation (performs/owns/produces) and rationale are not
+  // edited in this form yet; carry the stored values through untouched so
+  // saving a Component's description or attachments never drops its edges.
+  if (buf.kind === "Component") {
+    const src = buf.body || {};
+    for (const k of ["performs", "owns", "produces", "rationale"]) {
+      if (src[k] !== undefined) body[k] = src[k];
+    }
+  }
   if ((buf.kind === "DataObject" || buf.kind === "Event") && buf.schema) {
     const schema = writeSchema(buf.schema, (f) => fmtType(f, buf.id, world || {}));
     if (schema !== undefined) body.schema = schema;
+  }
+  // An Interface's channel record (contour.md §3.3): who it serves, its binding,
+  // and the Functions it exposes with their operation/request/responses. The
+  // Component it sits on is derived from `exposes`, never stored here.
+  if (buf.kind === "Interface") {
+    if (String(buf.serves || "").trim()) body.serves = buf.serves.trim();
+    const binding = writeBinding(buf.binding);
+    if (binding !== undefined) body.binding = binding;
+    const exposes = writeExposes(buf.exposes, (f) => fmtType(f, buf.id, world || {}));
+    if (exposes !== undefined) body.exposes = exposes;
+    // Carry a stored rationale through untouched (not edited in this form yet).
+    const src = buf.body || {};
+    if (src.rationale !== undefined) body.rationale = src.rationale;
   }
   if (buf.requirements && buf.requirements.length) body.requirements = buf.requirements;
   if (buf.guardrails && buf.guardrails.length) body.guardrails = buf.guardrails;
@@ -82,14 +105,19 @@ function UsesList({ uses, elementsById, status, onOpen, onNewFunction }) {
 export function Editor({
   element, world, elementsById, counts, reqOptions, grOptions,
   status, onOpen, onSave, onDefine, onNewFunction, saving, componentOfFunction, systemNameById,
+  view: viewProp, onView,
 }) {
   const [buf, setBuf] = useState(element);
   const [dirty, setDirty] = useState(false);
-  const [view, setView] = useState("form"); // "form" | "diagram"
+  const [viewState, setViewState] = useState("form"); // "form" | "diagram" (fallback when uncontrolled)
+  // Controlled by App (for the shareable-view URL) when `onView` is given.
+  const view = viewProp != null ? viewProp : viewState;
+  const setView = (v) => { if (onView) onView(v); else setViewState(v); };
 
   // Reseed when the selected element changes (by id) or reloads (by version).
-  // Reset to the form view whenever a different element is opened.
-  useEffect(() => { setBuf(element); setDirty(false); setView("form"); }, [element.id, element.version]);
+  // Reset to the form view whenever a different element is opened — unless the
+  // view is controlled by App (which decides the pane, e.g. from the URL).
+  useEffect(() => { setBuf(element); setDirty(false); if (onView == null) setViewState("form"); }, [element.id, element.version]);
 
   const patch = (p) => { setBuf((b) => ({ ...b, ...p })); setDirty(true); };
   const kind = buf.kind;
@@ -159,6 +187,10 @@ export function Editor({
 
       {kind === "Function" && (
         <FunctionEditor el={buf} world={world} elementsById={elementsById} componentOfFunction={componentOfFunction} systemNameById={systemNameById} onPatch={patch} onOpen={onOpen} />
+      )}
+
+      {kind === "Interface" && (
+        <InterfaceEditor el={buf} world={world} elementsById={elementsById} onPatch={patch} onOpen={onOpen} />
       )}
 
       {(kind === "DataObject" || kind === "Event") && buf.schema && (
